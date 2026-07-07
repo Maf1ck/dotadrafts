@@ -85,6 +85,13 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     }
   }
 
+  const radiantHeroes = computed(() =>
+    radiant.value.slots.map((s) => s.hero).filter((h): h is Hero => h !== null),
+  )
+  const direHeroes = computed(() =>
+    dire.value.slots.map((s) => s.hero).filter((h): h is Hero => h !== null),
+  )
+
   // Automatically prefetch matchups for all heroes picked in the draft
   watch(
     () => [...radiantHeroes.value, ...direHeroes.value],
@@ -94,13 +101,6 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
       }
     },
     { immediate: true }
-  )
-
-  const radiantHeroes = computed(() =>
-    radiant.value.slots.map((s) => s.hero).filter((h): h is Hero => h !== null),
-  )
-  const direHeroes = computed(() =>
-    dire.value.slots.map((s) => s.hero).filter((h): h is Hero => h !== null),
   )
 
   const usedHeroIds = computed(() =>
