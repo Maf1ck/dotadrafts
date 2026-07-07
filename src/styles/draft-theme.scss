@@ -1,0 +1,39 @@
+:root {
+  --dd-bg: #080b10;
+  --dd-bg-elevated: #0e1219;
+  --dd-bg-card: #12171f;
+  --dd-bg-card-hover: #171d28;
+  --dd-border: rgba(255, 255, 255, 0.06);
+  --dd-border-subtle: rgba(255, 255, 255, 0.03);
+  --dd-text: #eef0f4;
+  --dd-text-muted: #8b93a3;
+  --dd-text-dim: #5c6475;
+  --dd-radiant: #3dd6c8;
+  --dd-radiant-dim: rgba(61, 214, 200, 0.15);
+  --dd-dire: #e85d7a;
+  --dd-dire-dim: rgba(232, 93, 122, 0.15);
+  --dd-gold: #d4a843;
+  --dd-radius: 10px;
+  --dd-radius-sm: 6px;
+  --dd-font: 'Outfit', system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--dd-bg);
+  color: var(--dd-text);
+  font-family: var(--dd-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+}
