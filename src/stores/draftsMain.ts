@@ -24,6 +24,13 @@ import {
   type StratzHeroMatchup,
   type StratzHeroItems,
 } from '../services/stratz'
+import {
+  fetchHeroItemPopularity,
+  fetchItemConstantsMap,
+  resolvePopularItems,
+  type ItemInfo,
+  type HeroItemPopularity,
+} from '../services/opendotaItems'
 
 export type PickerMode = 'pick' | 'ban'
 export type PickerTarget =
@@ -75,7 +82,6 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   const isSteamConnected = ref(false)
 
   const matchupsCache = reactive<Record<number, Record<number, { wins: number; games: number }>>>({})
-  const itemPopularityCache = reactive<Record<number, any>>({})
 
   /** Stratz hero detail cache: heroId → { matchup, items } */
   const heroDetailCache = reactive<
@@ -111,7 +117,10 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
    * Results are cached in heroDetailCache.
    */
   async function fetchHeroDetailData(heroId: number) {
-    if (heroDetailCache[heroId] || heroDetailLoading[heroId]) return
+    if (heroDetailCache[heroId] || heroDetailLoading[heroId]) {
+      void fetchHeroItemsData(heroId)
+      return
+    }
     heroDetailLoading[heroId] = true
     try {
       const [matchup, items, constants] = await Promise.all([
@@ -120,25 +129,58 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
         fetchItemConstants(),
       ])
       heroDetailCache[heroId] = { matchup, items }
-      if (Object.keys(itemConstants.value).length === 0) {
+      if (Object.keys(itemConstants.value).length === 0 && constants) {
         itemConstants.value = constants
       }
     } catch (e) {
       console.warn(`[Store] fetchHeroDetailData failed for hero ${heroId}:`, e)
     } finally {
       heroDetailLoading[heroId] = false
+      void fetchHeroItemsData(heroId)
     }
   }
 
-  async function fetchItemPopularityForHero(heroId: number) {
-    if (itemPopularityCache[heroId]) return
+  /** OpenDota item popularity: heroId → buckets */
+  const itemPopularityByHero = reactive<Record<number, HeroItemPopularity>>({})
+  /** OpenDota item id → info */
+  const openDotaItems = ref<Record<number, ItemInfo>>({})
+  const itemsDataLoading = reactive<Record<number, boolean>>({})
+
+  async function ensureItemConstants() {
+    if (Object.keys(openDotaItems.value).length) return
+    openDotaItems.value = await fetchItemConstantsMap()
+    // Also keep string-keyed map for Stratz path compatibility
+    if (Object.keys(itemConstants.value).length === 0) {
+      const map: Record<string, { displayName: string; shortName: string }> = {}
+      for (const info of Object.values(openDotaItems.value)) {
+        map[String(info.id)] = { displayName: info.displayName, shortName: info.shortName }
+      }
+      itemConstants.value = map
+    }
+  }
+
+  async function fetchHeroItemsData(heroId: number) {
+    if (itemPopularityByHero[heroId] || itemsDataLoading[heroId]) return
+    itemsDataLoading[heroId] = true
     try {
-      const res = await fetch(`https://api.opendota.com/api/heroes/${heroId}/itemPopularity`)
-      if (!res.ok) throw new Error(`Failed to load item popularity for hero ${heroId}`)
-      const data = await res.json()
-      itemPopularityCache[heroId] = data
-    } catch (e) {
-      console.error(`Error fetching item popularity for hero ${heroId}:`, e)
+      await ensureItemConstants()
+      itemPopularityByHero[heroId] = await fetchHeroItemPopularity(heroId)
+    } finally {
+      itemsDataLoading[heroId] = false
+    }
+  }
+
+  function getResolvedItemsForHero(heroId: number) {
+    const pop = itemPopularityByHero[heroId]
+    const constants = openDotaItems.value
+    if (!pop || !Object.keys(constants).length) {
+      return { starting: [], early: [], core: [], luxury: [] }
+    }
+    return {
+      starting: resolvePopularItems(pop.starting, constants),
+      early: resolvePopularItems(pop.early, constants),
+      core: resolvePopularItems(pop.mid, constants),
+      luxury: resolvePopularItems(pop.late, constants),
     }
   }
 
@@ -423,8 +465,14 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     heroDetailCache,
     heroDetailLoading,
     itemConstants,
+    itemPopularityByHero,
+    openDotaItems,
+    itemsDataLoading,
     fetchMatchupsForHero,
     fetchHeroDetailData,
+    fetchHeroItemsData,
+    getResolvedItemsForHero,
+    ensureItemConstants,
     fetchHeroes,
     openPicker,
     closePicker,

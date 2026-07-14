@@ -185,7 +185,7 @@ const heroSynergies = computed(() => {
   })
 })
 
-// ─── Recommended Items (Stratz live → role-based fallback) ──────────────────
+// ─── Recommended Items (OpenDota popularity → Stratz → role fallback) ───────
 
 interface ItemDisplay { name: string; imageUrl: string; winRate?: number }
 
@@ -195,12 +195,25 @@ const recommendedItems = computed((): {
   core: ItemDisplay[]
   luxury: ItemDisplay[]
 } => {
-  const detail = stratzDetail.value
+  // 1. OpenDota popularity (most reliable)
+  const od = store.getResolvedItemsForHero(heroId.value)
+  const hasOd =
+    od.starting.length + od.early.length + od.core.length + od.luxury.length > 0
+  if (hasOd) {
+    return {
+      starting: od.starting.map((i) => ({ name: i.name, imageUrl: i.imageUrl })),
+      early: od.early.map((i) => ({ name: i.name, imageUrl: i.imageUrl })),
+      core: od.core.map((i) => ({ name: i.name, imageUrl: i.imageUrl })),
+      luxury: od.luxury.map((i) => ({ name: i.name, imageUrl: i.imageUrl })),
+    }
+  }
 
-  // 1. Stratz live items
+  // 2. Stratz live (only if resolved names exist)
+  const detail = stratzDetail.value
   if (detail?.items) {
-    const { startingItems, earlyItems, coreItems, lateItems } = detail.items
-    const mapItems = (list: typeof startingItems): ItemDisplay[] => {
+    const mapItems = (
+      list: { itemId: number; winRate: number }[],
+    ): ItemDisplay[] => {
       const result: ItemDisplay[] = []
       for (const i of list) {
         const entry = store.itemConstants[String(i.itemId)]
@@ -213,15 +226,16 @@ const recommendedItems = computed((): {
       }
       return result
     }
-    return {
-      starting: mapItems(startingItems),
-      early: mapItems(earlyItems),
-      core: mapItems(coreItems),
-      luxury: mapItems(lateItems),
+    const starting = mapItems(detail.items.startingItems)
+    const early = mapItems(detail.items.earlyItems)
+    const core = mapItems(detail.items.coreItems)
+    const luxury = mapItems(detail.items.lateItems)
+    if (starting.length + early.length + core.length + luxury.length > 0) {
+      return { starting, early, core, luxury }
     }
   }
 
-  // 2. Role-based fallback
+  // 3. Role-based fallback
   if (!hero.value) return { starting: [], early: [], core: [], luxury: [] }
   const roles = hero.value.roles
   const primaryAttr = hero.value.primaryAttr
@@ -265,6 +279,14 @@ const recommendedItems = computed((): {
     names.map((n) => ({ name: n, imageUrl: getItemImageUrl(n) }))
 
   return { starting: toDisplay(sNames), early: [], core: toDisplay(cNames), luxury: toDisplay(lNames) }
+})
+
+const itemsLiveSource = computed(() => {
+  const od = store.getResolvedItemsForHero(heroId.value)
+  const hasOd = od.starting.length + od.early.length + od.core.length + od.luxury.length > 0
+  if (hasOd) return 'opendota'
+  if (stratzDetail.value?.items?.coreItems?.length) return 'stratz'
+  return 'fallback'
 })
 
 // ─── Base stats (real values from hero object, not fake calculations) ────────
@@ -440,8 +462,14 @@ function attrLabel(attr: string) {
         .detail-card
           .card-title-row
             h2.card-title RECOMMENDED ITEM BUILDS
-            .live-badge(v-if="stratzDetail?.items") LIVE
-            .loading-badge(v-else-if="isStratzLoading") ...
+            .live-badge(v-if="itemsLiveSource === 'opendota' || itemsLiveSource === 'stratz'") LIVE
+            .loading-badge(v-else-if="store.itemsDataLoading[heroId]") ...
+
+          .items-empty(v-if="store.itemsDataLoading[heroId] && !recommendedItems.starting.length && !recommendedItems.core.length")
+            span Loading item builds...
+
+          .items-empty(v-else-if="!recommendedItems.starting.length && !recommendedItems.early.length && !recommendedItems.core.length && !recommendedItems.luxury.length")
+            span No item data available for this hero.
 
           .item-build-section(v-if="recommendedItems.starting.length")
             h3.item-section-header STARTING ITEMS
@@ -855,6 +883,13 @@ function attrLabel(attr: string) {
   &:last-child {
     margin-bottom: 0;
   }
+}
+
+.items-empty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: #5c6475;
 }
 
 .item-section-header {
