@@ -52,7 +52,7 @@ const teamLabel = computed(() => (props.forTeam === 'radiant' ? 'Radiant' : 'Dir
         span.rec-hero-name {{ rec.hero.localizedName }}
         span.rec-role {{ rec.role }}
         span.rec-reason {{ rec.reason }}
-      span.score-badge(:class="{ high: rec.score >= 8 }") {{ rec.score.toFixed(1) }}
+      span.score-badge(:class="{ high: rec.score >= 80 }") {{ rec.score.toFixed(0) }}
 </template>
 
 <style lang="scss" scoped>

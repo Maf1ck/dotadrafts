@@ -440,29 +440,36 @@ export function scoreRecommendations(
   matchupsCache?: Record<number, Record<number, { wins: number; games: number }>>,
 ): ScoredRecommendation {
   const tags: RecommendationTag[] = []
-  let score = 5
 
+  // 1. Meta / Pro Performance (Max 25 pts)
   const wr = winRates.get(candidate.id) ?? 50
-  score += (wr - 50) * 0.6
-  if (wr >= 51.5) tags.push({ label: 'meta pick', type: 'meta' })
+  let metaComponent = 12.5 + (wr - 50) * 2.5 // 50% -> 12.5, 55% -> 25, 45% -> 0
+  metaComponent = Math.min(25, Math.max(0, metaComponent))
+  if (wr >= 51.5) {
+    tags.push({ label: 'meta pick', type: 'meta' })
+  }
 
+  // 2. Synergy Component (Max 25 pts)
+  let synergyComponent = 10 // Start with baseline synergy
   for (const ally of teamHeroes) {
     const syn = getSynergyEntry(candidate, ally)
     if (syn) {
-      score += syn.synergyScore * 0.3
+      synergyComponent += syn.synergyScore * 1.5 // e.g. score of 6 -> +9 pts
       tags.push({ label: `synergy w/ ${ally.localizedName}`, type: 'synergy' })
     }
   }
-
   const missingRoles = teamMissingRoles(teamHeroes)
   for (const role of candidate.roles) {
     if (missingRoles.has(role)) {
-      score += 1.2
+      synergyComponent += 3.5
       tags.push({ label: `fills ${role}`, type: 'role' })
       break
     }
   }
+  synergyComponent = Math.min(25, Math.max(0, synergyComponent))
 
+  // 3. Matchup / Counter Component (Max 30 pts)
+  let matchupComponent = 15 // Start with neutral matchups
   for (const enemy of enemyHeroes) {
     let winRateAgainst = 50
     let hasDynamic = false
@@ -487,7 +494,7 @@ export function scoreRecommendations(
 
     if (hasDynamic) {
       const diff = winRateAgainst - 50
-      score += diff * 0.4
+      matchupComponent += diff * 2.0 // E.g., win rate 55% vs them -> +10 pts
       if (diff >= 3) {
         tags.push({ label: `good vs ${enemy.localizedName}`, type: 'counter' })
       } else if (diff <= -3) {
@@ -496,20 +503,35 @@ export function scoreRecommendations(
     } else {
       const entry = getCounterEntry(candidate, enemy)
       if (entry && entry.counter.id === candidate.id) {
-        const bonus = entry.severity === 'high' ? 3 : entry.severity === 'medium' ? 2 : 1
-        score += bonus
+        const bonus = entry.severity === 'high' ? 8 : entry.severity === 'medium' ? 5 : 2
+        matchupComponent += bonus
         tags.push({ label: `counters ${enemy.localizedName}`, type: 'counter' })
       } else if (entry && entry.victim.id === candidate.id) {
-        score -= entry.severity === 'high' ? 2.5 : entry.severity === 'medium' ? 1.5 : 0.8
+        const penalty = entry.severity === 'high' ? 7 : entry.severity === 'medium' ? 4 : 2
+        matchupComponent -= penalty
       }
     }
   }
+  matchupComponent = Math.min(30, Math.max(0, matchupComponent))
 
+  // 4. Role & Lane Fit Component (Max 20 pts)
   const roleFit = roleFitScore(candidate, position)
-  score += roleFit
+  let roleFitComponent = 0
   if (roleFit >= 3) {
+    roleFitComponent = 20
     tags.push({ label: POSITION_LABELS[position] ?? `pos ${position}`, type: 'role' })
+  } else if (roleFit === 2) {
+    roleFitComponent = 15
+  } else if (roleFit === 1.5) {
+    roleFitComponent = 10
+  } else {
+    roleFitComponent = 2 // Bad role fit
   }
+  roleFitComponent = Math.min(20, Math.max(0, roleFitComponent))
+
+  // Sum total out of 100
+  let totalScore = metaComponent + synergyComponent + matchupComponent + roleFitComponent
+  totalScore = Math.min(100, Math.max(1, totalScore))
 
   const uniqueTags = [...new Map(tags.map((t) => [t.label, t])).values()].slice(0, 3)
   const reason =
@@ -519,7 +541,7 @@ export function scoreRecommendations(
 
   return {
     hero: candidate,
-    score: Math.min(10, Math.max(1, score)),
+    score: totalScore,
     synergyWith: teamHeroes
       .filter((a) => getSynergyEntry(candidate, a))
       .map((a) => a.localizedName),
@@ -564,7 +586,7 @@ export function getRecommendations(
   emptyPositions: number[],
   winRates: Map<number, number>,
   matchupsCache?: Record<number, Record<number, { wins: number; games: number }>>,
-  limit = 8,
+  limit = 500,
 ): ScoredRecommendation[] {
   const positions = orderEmptyPositions(emptyPositions)
   const bestByHero = new Map<number, ScoredRecommendation>()
@@ -587,6 +609,7 @@ export function getRecommendations(
     }
   }
 
+  // Sort descending again (best to worst)
   const results = [...bestByHero.values()].sort((a, b) => b.score - a.score)
 
   // Ensure variety across positions in top picks
@@ -617,7 +640,10 @@ export function getRecommendations(
     }
   }
 
-  return diversified.slice(0, limit)
+  return diversified.slice(0, limit).map((rec) => ({
+    ...rec,
+    score: rec.score,
+  }))
 }
 
 export function getUsedHeroIds(

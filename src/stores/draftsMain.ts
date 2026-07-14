@@ -11,6 +11,7 @@ import type {
   RankFilter,
 } from '../types/draft'
 import { mapHeroesFromApi } from '../utils/heroMapper'
+import { FALLBACK_HEROES } from '../data/heroesFallback'
 import {
   analyzeDraft,
   getRecommendations,
@@ -59,7 +60,7 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   const pickerSearch = ref('')
   const pickerRoleFilter = ref<HeroRole | 'All'>('All')
 
-  const activePatch = ref<PatchInfo>({ version: '7.36c', label: 'Patch 7.36c' })
+  const activePatch = ref<PatchInfo>({ version: '7.41', label: 'Patch 7.41' })
   const activeRank = ref<RankFilter>({ value: 'divine_plus', label: 'Divine+' })
   const isSteamConnected = ref(false)
 
@@ -168,28 +169,41 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     loadError.value = null
     try {
       const [heroesRes, statsRes] = await Promise.all([
-        fetch('https://api.opendota.com/api/heroes'),
-        fetch('https://api.opendota.com/api/heroStats'),
+        fetch('https://api.opendota.com/api/heroes').catch(() => null),
+        fetch('https://api.opendota.com/api/heroStats').catch(() => null),
       ])
 
-      if (!heroesRes.ok) throw new Error('Failed to load heroes')
-      const heroesData: HeroList[] = await heroesRes.json()
-      heroes.value = mapHeroesFromApi(heroesData)
+      if (heroesRes && heroesRes.ok) {
+        const heroesData: HeroList[] = await heroesRes.json()
+        heroes.value = mapHeroesFromApi(heroesData)
 
-      if (statsRes.ok) {
-        const statsData: any[] = await statsRes.json()
-        const map = new Map<number, number>()
-        for (const row of statsData) {
-          // Calculate winrate based on Divine/Immortal pub keys or general pro/pub keys
-          const win = (row['7_win'] || 0) + (row['8_win'] || 0) || row['pro_win'] || row['pub_win'] || 0
-          const pick = (row['7_pick'] || 0) + (row['8_pick'] || 0) || row['pro_pick'] || row['pub_pick'] || 0
-          map.set(row.id, pick > 0 ? (win / pick) * 100 : 50)
+        if (statsRes && statsRes.ok) {
+          const statsData: any[] = await statsRes.json()
+          const map = new Map<number, number>()
+          for (const row of statsData) {
+            const win = (row['7_win'] || 0) + (row['8_win'] || 0) || row['pro_win'] || row['pub_win'] || 0
+            const pick = (row['7_pick'] || 0) + (row['8_pick'] || 0) || row['pro_pick'] || row['pub_pick'] || 0
+            map.set(row.id, pick > 0 ? (win / pick) * 100 : 50)
+          }
+          heroWinRates.value = map
+        } else {
+          const map = new Map<number, number>()
+          for (const h of FALLBACK_HEROES) {
+            map.set(h.id, h.winRate)
+          }
+          heroWinRates.value = map
         }
-        heroWinRates.value = map
+      } else {
+        throw new Error('Failed to fetch heroes from OpenDota API')
       }
     } catch (e) {
-      loadError.value = e instanceof Error ? e.message : 'Unknown error'
-      console.error('Error fetching heroes:', e)
+      console.warn('OpenDota API failed, using static fallback data:', e)
+      heroes.value = mapHeroesFromApi(FALLBACK_HEROES)
+      const map = new Map<number, number>()
+      for (const h of FALLBACK_HEROES) {
+        map.set(h.id, h.winRate)
+      }
+      heroWinRates.value = map
     } finally {
       isLoading.value = false
     }
