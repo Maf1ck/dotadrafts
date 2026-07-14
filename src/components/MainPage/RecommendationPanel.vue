@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { RecommendedHero, TeamSide } from '../../types/draft'
+import { useDraftsMainStore } from '../../stores/draftsMain'
 
 interface Props {
   recommendations: RecommendedHero[]
@@ -15,8 +16,16 @@ const emit = defineEmits<{
   switchTeam: [team: TeamSide]
 }>()
 
+const store = useDraftsMainStore()
 const { t } = useI18n()
 const teamLabel = computed(() => (props.forTeam === 'radiant' ? 'Radiant' : 'Dire'))
+
+const poolBtnText = computed(() => {
+  if (store.heroPoolFilter.size === 0) {
+    return t('rec.poolAll', 'Pool: All')
+  }
+  return t('rec.poolCount', { count: store.heroPoolFilter.size }, `Pool: ${store.heroPoolFilter.size} Heroes`)
+})
 </script>
 
 <template lang="pug">
@@ -25,17 +34,26 @@ const teamLabel = computed(() => (props.forTeam === 'radiant' ? 'Radiant' : 'Dir
     div
       h2.rec-title {{ t('rec.title') }}
       p.rec-desc {{ t('rec.bestFor', { team: teamLabel }) }}
-    .team-toggle
-      button.toggle-btn(
+    .header-controls
+      button.pool-filter-btn(
         type="button"
-        :class="{ active: forTeam === 'radiant' }"
-        @click="emit('switchTeam', 'radiant')"
-      ) Radiant
-      button.toggle-btn(
-        type="button"
-        :class="{ active: forTeam === 'dire' }"
-        @click="emit('switchTeam', 'dire')"
-      ) Dire
+        @click="store.poolModalOpen = true"
+        :class="{ filtered: store.heroPoolFilter.size > 0 }"
+      )
+        svg.pool-icon(width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2")
+          polygon(points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")
+        span {{ poolBtnText }}
+      .team-toggle
+        button.toggle-btn(
+          type="button"
+          :class="{ active: forTeam === 'radiant' }"
+          @click="emit('switchTeam', 'radiant')"
+        ) Radiant
+        button.toggle-btn(
+          type="button"
+          :class="{ active: forTeam === 'dire' }"
+          @click="emit('switchTeam', 'dire')"
+        ) Dire
 
   .rec-empty(v-if="!recommendations.length") {{ t('rec.allFilled', { team: teamLabel }) }}
 
@@ -84,6 +102,45 @@ const teamLabel = computed(() => (props.forTeam === 'radiant' ? 'Radiant' : 'Dir
   margin: 4px 0 0;
   font-size: 12px;
   color: var(--dd-text-dim);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pool-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--dd-bg-elevated);
+  border: 1px solid var(--dd-border-subtle);
+  border-radius: var(--dd-radius-sm);
+  font-family: var(--dd-font);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dd-text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+
+  &:hover {
+    color: var(--dd-text);
+    border-color: var(--dd-border);
+    background: var(--dd-bg-card-hover);
+  }
+
+  &.filtered {
+    color: var(--dd-gold);
+    border-color: rgba(229, 181, 59, 0.4);
+    background: rgba(229, 181, 59, 0.05);
+  }
+}
+
+.pool-icon {
+  flex-shrink: 0;
 }
 
 .team-toggle {

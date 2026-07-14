@@ -19,6 +19,20 @@ export function mapHeroFromApi(raw: HeroList): Hero {
     imageUrl: heroImageUrl(raw.name),
     roles: raw.roles as Hero['roles'],
     primaryAttr: raw.primary_attr,
+    // Base stats — populated when fetched from /heroStats (not /heroes)
+    baseStr: raw.base_str ?? 20,
+    baseAgi: raw.base_agi ?? 20,
+    baseInt: raw.base_int ?? 20,
+    strGain: raw.str_gain ?? 2.0,
+    agiGain: raw.agi_gain ?? 2.0,
+    intGain: raw.int_gain ?? 2.0,
+    baseArmor: raw.base_armor ?? 0,
+    baseAttackMin: raw.base_attack_min ?? 25,
+    baseAttackMax: raw.base_attack_max ?? 35,
+    attackRange: raw.attack_range ?? 150,
+    moveSpeed: raw.move_speed ?? 300,
+    attackRate: raw.attack_rate ?? 1.7,
+    attackType: (raw.attack_type === 'Ranged' ? 'Ranged' : 'Melee') as Hero['attackType'],
   }
 }
 

@@ -61,6 +61,8 @@ export default {
     title: 'Рекомендовані піки',
     bestFor: 'Найкращі варіанти для {team}',
     allFilled: 'Усі слоти {team} заповнені',
+    poolAll: 'Пул: Всі герої',
+    poolCount: 'Пул: {count} героїв',
   },
   sandbox: {
     soon: 'СКОРО',
@@ -86,5 +88,31 @@ export default {
     synergy: { label: 'Синергія', hint: 'Наскільки добре герої працюють разом у команді' },
     composition: { label: 'Склад', hint: 'Повнота ролей і стилю гри (пуш, тімфайт тощо)' },
     metaScore: { label: 'Мета', hint: 'Середній винрейт піків відносно патчу' },
+  },
+  seo: {
+    home: {
+      title: 'Симулятор драфту Dota 2 | Dota Drafts',
+      description: 'Аналізуйте свої драфти в Dota 2, рахуйте шанси на перемогу і отримуйте рекомендації героїв згідно з мета-даними.',
+    },
+    heroes: {
+      title: 'Тір-лист та статистика героїв Dota 2 | Dota Drafts',
+      description: 'Досліджуйте поточну мету Dota 2, вінрейти героїв та найкращі матчапи.',
+    },
+    meta: {
+      title: 'Тренди мети та аналіз Dota 2 | Dota Drafts',
+      description: 'Глибокий аналіз мети Dota 2, популярних піків та патчів.',
+    },
+    about: {
+      title: 'Про проект Dota Drafts | Ваш помічник по драфту',
+      description: 'Дізнайтеся більше про Dota Drafts, найкращий інструмент для драфту в Dota 2.',
+    }
+  },
+  heroes: { placeholder: 'Статистика героїв та тір-лист.' },
+  metaData: { placeholder: 'Аналіз мети та трендів.' },
+  about: { placeholder: 'Інформація про проект та авторів.' },
+  pool: {
+    label: 'Вибрано: {count} героїв',
+    title: 'Мій пул героїв',
+    clear: 'Скинути',
   },
 }

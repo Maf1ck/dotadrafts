@@ -4,12 +4,12 @@ import { storeToRefs } from 'pinia'
 import { useDraftsMainStore } from '../../stores/draftsMain'
 import type { SlotPosition, TeamSide } from '../../types/draft'
 
-import AppHeader from './AppHeader.vue'
 import DraftSection from './DraftSection.vue'
 import DetailSection from './DetailSection.vue'
 import RecommendationPanel from './RecommendationPanel.vue'
 import SandboxPanel from './SandboxPanel.vue'
 import HeroPickerModal from './HeroPickerModal.vue'
+import HeroPoolModal from './HeroPoolModal.vue'
 
 const { t } = useI18n()
 
@@ -41,8 +41,6 @@ function handleBanClick(side: TeamSide, index: number) {
 
 <template lang="pug">
 .page
-  AppHeader
-
   .page-body
     section.draft-area
       .toolbar
@@ -78,6 +76,7 @@ function handleBanClick(side: TeamSide, index: number) {
       SandboxPanel
 
   HeroPickerModal
+  HeroPoolModal
 </template>
 
 <style lang="scss" scoped>

@@ -61,6 +61,8 @@ export default {
     title: 'Recommended Picks',
     bestFor: 'Best options for {team}',
     allFilled: 'All {team} slots are filled',
+    poolAll: 'Pool: All Heroes',
+    poolCount: 'Pool: {count} Heroes',
   },
   sandbox: {
     soon: 'SOON',
@@ -86,5 +88,31 @@ export default {
     synergy: { label: 'Synergy', hint: 'How well heroes work together in the team' },
     composition: { label: 'Composition', hint: 'Role and playstyle completeness (push, teamfight, etc.)' },
     metaScore: { label: 'Meta Score', hint: 'Average pick winrate relative to patch' },
+  },
+  seo: {
+    home: {
+      title: 'Dota 2 Draft Simulator & Analyzer | Dota Drafts',
+      description: 'Analyze your Dota 2 drafts, calculate win chances, and get best hero recommendations based on current meta.',
+    },
+    heroes: {
+      title: 'Dota 2 Heroes Tier List & Stats | Dota Drafts',
+      description: 'Explore the current Dota 2 meta, hero winrates, and best matchups.',
+    },
+    meta: {
+      title: 'Dota 2 Meta Trends & Analysis | Dota Drafts',
+      description: 'Deep dive into Dota 2 meta trends, popular picks, and patch analysis.',
+    },
+    about: {
+      title: 'About Dota Drafts | The Ultimate Draft Assistant',
+      description: 'Learn more about Dota Drafts, the ultimate drafting tool for Dota 2 players.',
+    }
+  },
+  heroes: { placeholder: 'Hero statistics and tier list.' },
+  metaData: { placeholder: 'Meta analysis and trends.' },
+  about: { placeholder: 'Information about the project.' },
+  pool: {
+    label: 'Selected: {count} heroes',
+    title: 'My Hero Pool',
+    clear: 'Clear All',
   },
 }

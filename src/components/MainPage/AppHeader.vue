@@ -4,19 +4,20 @@ import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useDraftsMainStore } from '../../stores/draftsMain'
 import { setLocale, LOCALES, type AppLocale } from '../../i18n'
+import { useRoute } from 'vue-router'
 
 const { t, locale } = useI18n()
 
 const store = useDraftsMainStore()
 const { activePatch, activeRank, isSteamConnected } = storeToRefs(store)
 
-const activeNav = defineModel<string>('activeNav', { default: 'draft' })
+const route = useRoute()
 
 const navItems = computed(() => [
-  { key: 'draft',  label: t('nav.draft') },
-  { key: 'heroes', label: t('nav.heroes') },
-  { key: 'meta',   label: t('nav.meta') },
-  { key: 'about',  label: t('nav.about') },
+  { key: 'draft',  label: t('nav.draft'), to: '/' },
+  { key: 'heroes', label: t('nav.heroes'), to: '/heroes' },
+  { key: 'meta',   label: t('nav.meta'), to: '/meta' },
+  { key: 'about',  label: t('nav.about'), to: '/about' },
 ])
 </script>
 
@@ -30,12 +31,11 @@ header.app-header
         span.logo-dota DOTA
         span.logo-drafts DRAFTS
       nav.nav-items
-        button.nav-item(
+        router-link.nav-item(
           v-for="item in navItems"
           :key="item.key"
-          type="button"
-          :class="{ active: activeNav === item.key }"
-          @click="activeNav = item.key"
+          :to="item.to"
+          :class="{ active: route.name === item.key }"
         ) {{ item.label }}
 
     .header-right
@@ -126,6 +126,7 @@ header.app-header
   padding: 4px 0;
   position: relative;
   transition: color 0.2s;
+  text-decoration: none;
 
   &::after {
     content: '';

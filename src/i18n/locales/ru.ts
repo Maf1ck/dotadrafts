@@ -61,6 +61,8 @@ export default {
     title: 'Рекомендуемые пики',
     bestFor: 'Лучшие варианты для {team}',
     allFilled: 'Все слоты {team} заполнены',
+    poolAll: 'Пул: Все герои',
+    poolCount: 'Пул: {count} героев',
   },
   sandbox: {
     soon: 'СКОРО',
@@ -86,5 +88,31 @@ export default {
     synergy: { label: 'Синергия', hint: 'Насколько хорошо герои работают вместе в команде' },
     composition: { label: 'Состав', hint: 'Полнота ролей и стиля игры (пуш, тимфайт и т.д.)' },
     metaScore: { label: 'Мета', hint: 'Средний винрейт пиков относительно патча' },
+  },
+  seo: {
+    home: {
+      title: 'Симулятор драфта Dota 2 | Dota Drafts',
+      description: 'Анализируйте свои драфты в Dota 2, считайте шансы на победу и получайте рекомендации героев по текущей мете.',
+    },
+    heroes: {
+      title: 'Тир-лист и статистика героев Dota 2 | Dota Drafts',
+      description: 'Изучите текущую мету Dota 2, винрейты героев и лучшие матчапы.',
+    },
+    meta: {
+      title: 'Тренды меты и анализ Dota 2 | Dota Drafts',
+      description: 'Глубокий анализ меты Dota 2, популярных пиков и патчей.',
+    },
+    about: {
+      title: 'О проекте Dota Drafts | Ваш помощник по драфту',
+      description: 'Узнайте больше о Dota Drafts, лучшем инструменте для драфта в Dota 2.',
+    }
+  },
+  heroes: { placeholder: 'Статистика героев и тир-лист.' },
+  metaData: { placeholder: 'Анализ меты и трендов.' },
+  about: { placeholder: 'Информация о проекте и авторах.' },
+  pool: {
+    label: 'Выбрано: {count} героев',
+    title: 'Мой пул героев',
+    clear: 'Сбросить',
   },
 }

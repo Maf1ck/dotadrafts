@@ -7,6 +7,20 @@ export interface Hero {
   imageUrl: string
   roles: HeroRole[]
   primaryAttr: 'str' | 'agi' | 'int' | 'all'
+  // Base stats from /heroStats
+  baseStr: number
+  baseAgi: number
+  baseInt: number
+  strGain: number
+  agiGain: number
+  intGain: number
+  baseArmor: number
+  baseAttackMin: number
+  baseAttackMax: number
+  attackRange: number
+  moveSpeed: number
+  attackRate: number
+  attackType: 'Melee' | 'Ranged'
 }
 
 export interface HeroList {
@@ -16,6 +30,19 @@ export interface HeroList {
   primary_attr: 'str' | 'agi' | 'int' | 'all'
   attack_type: string
   roles: string[]
+  // stat fields from /heroStats
+  base_str?: number
+  base_agi?: number
+  base_int?: number
+  str_gain?: number
+  agi_gain?: number
+  int_gain?: number
+  base_armor?: number
+  base_attack_min?: number
+  base_attack_max?: number
+  attack_range?: number
+  move_speed?: number
+  attack_rate?: number
 }
 
 export type HeroRole =

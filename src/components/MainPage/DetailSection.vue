@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { ArrowRight, Circle } from '@lucide/vue'
 import type { DetailTab, SynergyEntry, CounterEntry, MetaStatRow } from '../../types/draft'
 
 interface Props {
@@ -56,8 +57,12 @@ const hasDraftData = computed(
       h2.section-title {{ t('detail.title') }}
       p.section-desc {{ t('detail.desc') }}
     .legend
-      span.legend-item.radiant ● Radiant
-      span.legend-item.dire ● Dire
+      span.legend-item.radiant
+        Circle.legend-dot(:size="8" :stroke-width="0" fill="currentColor")
+        | Radiant
+      span.legend-item.dire
+        Circle.legend-dot(:size="8" :stroke-width="0" fill="currentColor")
+        | Dire
 
   .tab-bar
     button.tab-btn(
@@ -94,7 +99,7 @@ const hasDraftData = computed(
       .list-item(v-for="(c, i) in counters" :key="i")
         .hero-pair
           img.mini-hero(:src="c.counter.imageUrl" :alt="c.counter.localizedName")
-          span.arrow →
+          ArrowRight.arrow(:size="12" :stroke-width="2.5")
           img.mini-hero(:src="c.victim.imageUrl" :alt="c.victim.localizedName")
         .item-body
           strong {{ c.counter.localizedName }}
@@ -172,9 +177,20 @@ const hasDraftData = computed(
   gap: 14px;
   font-size: 12px;
   color: var(--dd-text-muted);
+  align-items: center;
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
 
   .radiant { color: var(--dd-radiant); }
   .dire { color: var(--dd-dire); }
+
+  .legend-dot {
+    flex-shrink: 0;
+  }
 }
 
 .tab-bar {
