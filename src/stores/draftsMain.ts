@@ -27,11 +27,20 @@ import {
 import {
   fetchHeroItemPopularity,
   fetchItemConstantsMap,
+  clearItemConstantsCache,
   resolvePopularItems,
   type ItemInfo,
   type HeroItemPopularity,
 } from '../services/opendotaItems'
+import {
+  CM_SEQUENCE,
+  banSlotsNeeded,
+  sideForSeat,
+} from '../data/cmSequence'
+import { getBestPosition } from '../data/heroPositions'
+import { teamBuildScore } from '../services/buildImpact'
 
+export type DraftMode = 'manual' | 'simulator'
 export type PickerMode = 'pick' | 'ban'
 export type PickerTarget =
   | { mode: 'pick'; side: TeamSide; position: SlotPosition }
@@ -45,15 +54,23 @@ const POSITION_LABELS: Record<SlotPosition, string> = {
   5: 'Select Hard Support (Pos 5)',
 }
 
-function createEmptyDraft(side: TeamSide): TeamDraft {
+function createEmptyDraft(side: TeamSide, banCount = 5): TeamDraft {
   return {
     side,
-    bans: [null, null, null, null, null],
+    bans: Array.from({ length: banCount }, () => null),
     slots: ([1, 2, 3, 4, 5] as SlotPosition[]).map((position) => ({
       position,
       label: POSITION_LABELS[position],
       hero: null,
     })),
+  }
+}
+
+function createCmDrafts(firstPickSide: TeamSide): { radiant: TeamDraft; dire: TeamDraft } {
+  const needed = banSlotsNeeded(firstPickSide)
+  return {
+    radiant: createEmptyDraft('radiant', needed.radiant),
+    dire: createEmptyDraft('dire', needed.dire),
   }
 }
 
@@ -63,10 +80,17 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   const isLoading = ref(false)
   const loadError = ref<string | null>(null)
 
+  const draftMode = ref<DraftMode>('manual')
+  /** Team that has first pick in CM simulator */
+  const firstPickSide = ref<TeamSide>('radiant')
+  const cmStepIndex = ref(0)
+
   const radiant = ref<TeamDraft>(createEmptyDraft('radiant'))
   const dire = ref<TeamDraft>(createEmptyDraft('dire'))
 
   const advisingTeam = ref<TeamSide>('radiant')
+  /** Player's own team — hero pool applies only when advising this side */
+  const myTeam = ref<TeamSide>('radiant')
   const lastPick = ref<{ hero: Hero; team: TeamSide } | null>(null)
 
   const pickerOpen = ref(false)
@@ -77,7 +101,7 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   const heroPoolFilter = ref<Set<number>>(new Set())
   const poolModalOpen = ref(false)
 
-  const activePatch = ref<PatchInfo>({ version: '7.41', label: 'Patch 7.41' })
+  const activePatch = ref<PatchInfo>({ version: '7.41d', label: 'Patch 7.41d' })
   const activeRank = ref<RankFilter>({ value: 'divine_plus', label: 'Divine+' })
   const isSteamConnected = ref(false)
 
@@ -146,11 +170,12 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   const openDotaItems = ref<Record<number, ItemInfo>>({})
   const itemsDataLoading = reactive<Record<number, boolean>>({})
 
-  async function ensureItemConstants() {
-    if (Object.keys(openDotaItems.value).length) return
+  async function ensureItemConstants(force = false) {
+    if (!force && Object.keys(openDotaItems.value).length) return
+    if (force) clearItemConstantsCache()
     openDotaItems.value = await fetchItemConstantsMap()
     // Also keep string-keyed map for Stratz path compatibility
-    if (Object.keys(itemConstants.value).length === 0) {
+    if (force || Object.keys(itemConstants.value).length === 0) {
       const map: Record<string, { displayName: string; shortName: string }> = {}
       for (const info of Object.values(openDotaItems.value)) {
         map[String(info.id)] = { displayName: info.displayName, shortName: info.shortName }
@@ -211,8 +236,70 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     ),
   )
 
+  /** Per-hero sandbox builds */
+  type HeroBuildState = {
+    items: number[]
+    neutrals: number[]
+    talents: Record<number, 'left' | 'right'>
+    skills: string[]
+  }
+
+  const heroBuilds = reactive<Record<number, HeroBuildState>>({})
+
+  function emptyBuild(): HeroBuildState {
+    return { items: [], neutrals: [], talents: {}, skills: [] }
+  }
+
+  function ensureHeroBuild(heroId: number): HeroBuildState {
+    if (!heroBuilds[heroId]) heroBuilds[heroId] = emptyBuild()
+    return heroBuilds[heroId]!
+  }
+
+  function toggleBuildItem(heroId: number, itemId: number, asNeutral = false) {
+    const build = ensureHeroBuild(heroId)
+    const list = asNeutral ? build.neutrals : build.items
+    const max = asNeutral ? 1 : 6
+    const idx = list.indexOf(itemId)
+    if (idx >= 0) list.splice(idx, 1)
+    else if (list.length < max) list.push(itemId)
+  }
+
+  function setBuildTalent(heroId: number, level: number, side: 'left' | 'right') {
+    ensureHeroBuild(heroId).talents[level] = side
+  }
+
+  function setBuildSkills(heroId: number, skills: string[]) {
+    ensureHeroBuild(heroId).skills = skills
+  }
+
+  function clearHeroBuild(heroId: number) {
+    heroBuilds[heroId] = emptyBuild()
+  }
+
+  const radiantBuildScore = computed(() =>
+    teamBuildScore(
+      radiantHeroes.value.map((h) => h.id),
+      heroBuilds,
+      openDotaItems.value,
+    ),
+  )
+  const direBuildScore = computed(() =>
+    teamBuildScore(
+      direHeroes.value.map((h) => h.id),
+      heroBuilds,
+      openDotaItems.value,
+    ),
+  )
+
   const analysis = computed(() =>
-    analyzeDraft(radiantHeroes.value, direHeroes.value, heroWinRates.value, lastPick.value, matchupsCache),
+    analyzeDraft(
+      radiantHeroes.value,
+      direHeroes.value,
+      heroWinRates.value,
+      lastPick.value,
+      matchupsCache,
+      { radiant: radiantBuildScore.value, dire: direBuildScore.value },
+    ),
   )
 
   const prediction = computed(() => analysis.value.prediction)
@@ -242,26 +329,69 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     })
   })
 
+  const cmCurrentStep = computed(() => {
+    if (draftMode.value !== 'simulator') return null
+    if (cmStepIndex.value >= CM_SEQUENCE.length) return null
+    return CM_SEQUENCE[cmStepIndex.value] ?? null
+  })
+
+  const cmCurrentSide = computed<TeamSide | null>(() => {
+    const step = cmCurrentStep.value
+    if (!step) return null
+    return sideForSeat(step.seat, firstPickSide.value)
+  })
+
+  const cmPhaseLabel = computed(() => {
+    const step = cmCurrentStep.value
+    if (!step) return 'complete'
+    return step.type
+  })
+
+  const cmIsComplete = computed(
+    () => draftMode.value === 'simulator' && cmStepIndex.value >= CM_SEQUENCE.length,
+  )
+
+  const adviceTeam = computed<TeamSide>(() => {
+    if (draftMode.value === 'simulator' && cmCurrentSide.value) {
+      return cmCurrentSide.value
+    }
+    return advisingTeam.value
+  })
+
   const recommendations = computed(() => {
-    const team = advisingTeam.value
+    const team = adviceTeam.value
     const teamHeroes = team === 'radiant' ? radiantHeroes.value : direHeroes.value
     const enemyHeroes = team === 'radiant' ? direHeroes.value : radiantHeroes.value
     const empty = emptySlotsFor(team)
 
-    if (!empty.length) return []
+    if (draftMode.value === 'simulator' && cmIsComplete.value) return []
+    if (draftMode.value === 'manual' && !empty.length) return []
+    if (
+      draftMode.value === 'simulator' &&
+      cmCurrentStep.value?.type === 'pick' &&
+      !empty.length
+    ) {
+      return []
+    }
 
-    const pool = availableHeroes.value.filter(
-      (h) => heroPoolFilter.value.size === 0 || heroPoolFilter.value.has(h.id)
-    )
+    const positions = empty.length ? empty : ([1, 2, 3, 4, 5] as number[])
+
+    const pool = availableHeroes.value.filter((h) => {
+      // Hero pool is only for "my" team recommendations
+      if (team !== myTeam.value) return true
+      if (heroPoolFilter.value.size === 0) return true
+      return heroPoolFilter.value.has(h.id)
+    })
 
     return getRecommendations(
       pool,
       team,
       teamHeroes,
       enemyHeroes,
-      empty,
+      positions,
       heroWinRates.value,
       matchupsCache,
+      12,
     )
   })
 
@@ -353,9 +483,68 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     heroPoolFilter.value.clear()
   }
 
+  function nextEmptyBanIndex(side: TeamSide): number {
+    const draft = side === 'radiant' ? radiant.value : dire.value
+    return draft.bans.findIndex((b) => b === null)
+  }
+
+  function nextEmptyPickPosition(side: TeamSide, preferred?: number): SlotPosition | null {
+    const draft = side === 'radiant' ? radiant.value : dire.value
+    if (preferred) {
+      const slot = draft.slots.find((s) => s.position === preferred && !s.hero)
+      if (slot) return slot.position
+    }
+    const empty = draft.slots.filter((s) => !s.hero).map((s) => s.position)
+    if (!empty.length) return null
+    return orderPickPosition(empty)
+  }
+
+  function applyCmHero(hero: Hero) {
+    const step = cmCurrentStep.value
+    if (!step || !cmCurrentSide.value) return
+
+    const side = cmCurrentSide.value
+    if (step.type === 'ban') {
+      const idx = nextEmptyBanIndex(side)
+      if (idx < 0) return
+      const draft = side === 'radiant' ? radiant.value : dire.value
+      draft.bans[idx] = hero
+      lastPick.value = { hero, team: side }
+    } else {
+      const preferred = getBestPosition(hero.name) ?? undefined
+      const position = nextEmptyPickPosition(side, preferred ?? undefined)
+      if (position == null) return
+      const draft = side === 'radiant' ? radiant.value : dire.value
+      const slot = draft.slots.find((s) => s.position === position)
+      if (!slot || slot.hero) return
+      slot.hero = hero
+      lastPick.value = { hero, team: side }
+    }
+    cmStepIndex.value += 1
+  }
+
   function selectHero(hero: Hero) {
+    if (draftMode.value === 'simulator' && pickerTarget.value == null) {
+      applyCmHero(hero)
+      closePicker()
+      return
+    }
+
     const target = pickerTarget.value
     if (!target) return
+
+    if (draftMode.value === 'simulator') {
+      // Only allow selecting for the current CM step
+      const step = cmCurrentStep.value
+      const side = cmCurrentSide.value
+      if (!step || !side || target.side !== side || target.mode !== step.type) {
+        closePicker()
+        return
+      }
+      applyCmHero(hero)
+      closePicker()
+      return
+    }
 
     if (target.mode === 'pick') {
       const draft = target.side === 'radiant' ? radiant.value : dire.value
@@ -373,14 +562,32 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   }
 
   function openPickSlot(side: TeamSide, position: SlotPosition) {
+    if (draftMode.value === 'simulator') {
+      const step = cmCurrentStep.value
+      if (!step || step.type !== 'pick' || cmCurrentSide.value !== side) return
+      openPicker({ mode: 'pick', side, position })
+      return
+    }
     openPicker({ mode: 'pick', side, position })
   }
 
   function openBanSlot(side: TeamSide, index: number) {
+    if (draftMode.value === 'simulator') {
+      const step = cmCurrentStep.value
+      if (!step || step.type !== 'ban' || cmCurrentSide.value !== side) return
+      const expected = nextEmptyBanIndex(side)
+      if (expected !== index && expected >= 0) {
+        openPicker({ mode: 'ban', side, index: expected })
+        return
+      }
+      openPicker({ mode: 'ban', side, index })
+      return
+    }
     openPicker({ mode: 'ban', side, index })
   }
 
   function removePick(side: TeamSide, position: SlotPosition) {
+    if (draftMode.value === 'simulator') return
     const draft = side === 'radiant' ? radiant.value : dire.value
     const slot = draft.slots.find((s) => s.position === position)
     if (slot?.hero) {
@@ -390,6 +597,7 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   }
 
   function removeBan(side: TeamSide, index: number) {
+    if (draftMode.value === 'simulator') return
     const draft = side === 'radiant' ? radiant.value : dire.value
     if (draft.bans[index]) {
       lastPick.value = null
@@ -398,10 +606,20 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   }
 
   function applyRecommendation(rec: { hero: Hero; suggestedPosition?: number }) {
+    if (draftMode.value === 'simulator') {
+      if (cmIsComplete.value) return
+      applyCmHero(rec.hero)
+      return
+    }
+
     const team = advisingTeam.value
     const empty = emptySlotsFor(team)
     if (!empty.length) return
-    const position = (rec.suggestedPosition ?? orderPickPosition(empty)) as SlotPosition
+    const preferred =
+      (rec.suggestedPosition as SlotPosition | undefined) ??
+      getBestPosition(rec.hero.name) ??
+      orderPickPosition(empty)
+    const position = (empty.includes(preferred) ? preferred : orderPickPosition(empty)) as SlotPosition
     const draft = team === 'radiant' ? radiant.value : dire.value
     const slot = draft.slots.find((s) => s.position === position)
     if (!slot || slot.hero) return
@@ -416,14 +634,67 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   }
 
   function setAdvisingTeam(team: TeamSide) {
+    if (draftMode.value === 'simulator') return
     advisingTeam.value = team
   }
 
+  function setMyTeam(team: TeamSide) {
+    myTeam.value = team
+    // Advice defaults to "us" when choosing which side you play
+    if (draftMode.value === 'manual') {
+      advisingTeam.value = team
+    }
+  }
+
+  function setDraftMode(mode: DraftMode) {
+    draftMode.value = mode
+    if (mode === 'simulator') {
+      const drafts = createCmDrafts(firstPickSide.value)
+      radiant.value = drafts.radiant
+      dire.value = drafts.dire
+      cmStepIndex.value = 0
+      lastPick.value = null
+      advisingTeam.value = firstPickSide.value
+    } else {
+      radiant.value = createEmptyDraft('radiant')
+      dire.value = createEmptyDraft('dire')
+      cmStepIndex.value = 0
+      lastPick.value = null
+      advisingTeam.value = 'radiant'
+    }
+  }
+
+  function setFirstPickSide(side: TeamSide) {
+    firstPickSide.value = side
+    if (draftMode.value === 'simulator') {
+      setDraftMode('simulator')
+    }
+  }
+
+  function openCmPicker() {
+    if (draftMode.value !== 'simulator' || !cmCurrentStep.value || !cmCurrentSide.value) return
+    const side = cmCurrentSide.value
+    if (cmCurrentStep.value.type === 'ban') {
+      const idx = nextEmptyBanIndex(side)
+      if (idx < 0) return
+      openPicker({ mode: 'ban', side, index: idx })
+    } else {
+      const pos = nextEmptyPickPosition(side)
+      if (pos == null) return
+      openPicker({ mode: 'pick', side, position: pos })
+    }
+  }
+
   function resetDraft() {
+    if (draftMode.value === 'simulator') {
+      setDraftMode('simulator')
+      return
+    }
     radiant.value = createEmptyDraft('radiant')
     dire.value = createEmptyDraft('dire')
     lastPick.value = null
     advisingTeam.value = 'radiant'
+    cmStepIndex.value = 0
   }
 
   function connectSteam() {
@@ -438,6 +709,15 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     heroWinRates,
     isLoading,
     loadError,
+    draftMode,
+    firstPickSide,
+    cmStepIndex,
+    cmCurrentStep,
+    cmCurrentSide,
+    cmPhaseLabel,
+    cmIsComplete,
+    adviceTeam,
+    myTeam,
     radiant,
     dire,
     advisingTeam,
@@ -468,11 +748,19 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     itemPopularityByHero,
     openDotaItems,
     itemsDataLoading,
+    heroBuilds,
+    radiantBuildScore,
+    direBuildScore,
     fetchMatchupsForHero,
     fetchHeroDetailData,
     fetchHeroItemsData,
     getResolvedItemsForHero,
     ensureItemConstants,
+    ensureHeroBuild,
+    toggleBuildItem,
+    setBuildTalent,
+    setBuildSkills,
+    clearHeroBuild,
     fetchHeroes,
     openPicker,
     closePicker,
@@ -485,6 +773,10 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     removeBan,
     applyRecommendation,
     setAdvisingTeam,
+    setMyTeam,
+    setDraftMode,
+    setFirstPickSide,
+    openCmPicker,
     resetDraft,
     connectSteam,
   }

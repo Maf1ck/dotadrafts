@@ -25,10 +25,11 @@ const tabs = computed((): { key: DetailTab; label: string }[] => [
 
 // MetaStatRow labels are mapped via t() directly in template
 const metaKeyMap: Record<string, string> = {
-  Matchups:     'meta.matchups',
-  Synergy:      'meta.synergy',
-  Composition:  'meta.composition',
+  Matchups: 'meta.matchups',
+  Synergy: 'meta.synergy',
+  Composition: 'meta.composition',
   'Meta Score': 'meta.metaScore',
+  'Item Builds': 'meta.itemBuilds',
 }
 
 const rowsTranslated = computed(() =>

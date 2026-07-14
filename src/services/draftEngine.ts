@@ -8,6 +8,7 @@ import type {
   TeamSide,
 } from '../types/draft'
 import { COMPOSITION_TAGS, HERO_COUNTERS, HERO_SYNERGIES } from '../data/matchups'
+import { getPrimaryPositions } from '../data/heroPositions'
 
 export interface HeroWinRate {
   id: number
@@ -39,11 +40,22 @@ export interface ScoredRecommendation extends RecommendedHero {
 
 const POSITION_ROLES: Record<number, string[]> = {
   1: ['Carry'],
-  2: ['Carry', 'Nuker'],
+  2: ['Nuker', 'Carry'],
   3: ['Initiator', 'Durable', 'Disabler'],
-  4: ['Support', 'Disabler', 'Nuker'],
-  5: ['Support'],
+  4: ['Support', 'Disabler', 'Escape'],
+  5: ['Support', 'Disabler'],
 }
+
+/** Heroes tagged only as Nuker/Escape should not default to mid */
+const SUPPORTISH_WITHOUT_SUPPORT_TAG = new Set([
+  'bounty_hunter',
+  'nyx_assassin',
+  'riki',
+  'techies',
+  'earth_spirit',
+  'tusk',
+  'rattletrap',
+])
 
 function heroByName(heroes: Hero[], name: string): Hero | undefined {
   return heroes.find((h) => h.name === name)
@@ -256,6 +268,7 @@ export function analyzeDraft(
   winRates: Map<number, number>,
   lastPick?: { hero: Hero; team: TeamSide } | null,
   matchupsCache?: Record<number, Record<number, { wins: number; games: number }>>,
+  buildBonus?: { radiant: number; dire: number },
 ): DraftAnalysis {
   const matchups = matchupAdvantage(radiantHeroes, direHeroes, matchupsCache)
   const radiantSyn = teamSynergyScore(radiantHeroes)
@@ -267,19 +280,23 @@ export function analyzeDraft(
 
   const radiantCompBonus = radiantComp.length * 0.8
   const direCompBonus = direComp.length * 0.8
+  const radiantBuild = buildBonus?.radiant ?? 0
+  const direBuild = buildBonus?.dire ?? 0
 
   let radiantScore =
     50 +
     matchups.radiant * 2.5 +
     radiantSyn * 2 +
     radiantMeta * 0.4 +
-    radiantCompBonus
+    radiantCompBonus +
+    radiantBuild * 1.35
   let direScore =
     50 +
     matchups.dire * 2.5 +
     direSyn * 2 +
     direMeta * 0.4 +
-    direCompBonus
+    direCompBonus +
+    direBuild * 1.35
 
   if (radiantHeroes.length === 0 && direHeroes.length === 0) {
     radiantScore = 50
@@ -301,7 +318,7 @@ export function analyzeDraft(
     const otherRadiant = lastPick.team === 'radiant' ? without : radiantHeroes
     const otherDire = lastPick.team === 'dire' ? without : direHeroes
 
-    const prev = analyzeDraft(otherRadiant, otherDire, winRates, null)
+    const prev = analyzeDraft(otherRadiant, otherDire, winRates, null, matchupsCache, buildBonus)
     const prevRadiant = prev.prediction.radiantWinRate
     delta = radiantWinRate - prevRadiant
     deltaHero = lastPick.hero.localizedName
@@ -380,6 +397,17 @@ export function analyzeDraft(
       advantage:
         radiantMeta > direMeta ? 'radiant' : direMeta > radiantMeta ? 'dire' : 'neutral',
     },
+    {
+      label: 'Item Builds',
+      radiantValue: radiantBuild > 0.05 ? `+${radiantBuild.toFixed(1)}` : '—',
+      direValue: direBuild > 0.05 ? `+${direBuild.toFixed(1)}` : '—',
+      advantage:
+        radiantBuild > direBuild + 0.15
+          ? 'radiant'
+          : direBuild > radiantBuild + 0.15
+            ? 'dire'
+            : 'neutral',
+    },
   ]
 
   return {
@@ -401,12 +429,48 @@ export function analyzeDraft(
   }
 }
 
+function shortName(hero: Hero): string {
+  return hero.name.replace(/^npc_dota_hero_/, '')
+}
+
 function roleFitScore(hero: Hero, position: number): number {
+  const primary = getPrimaryPositions(hero.name)
+  if (primary) {
+    const idx = primary.indexOf(position as 1 | 2 | 3 | 4 | 5)
+    if (idx === 0) return 4
+    if (idx === 1) return 3
+    if (idx >= 2) return 1.5
+    // Listed for other positions → bad fit for this slot
+    return -4
+  }
+
+  const sn = shortName(hero)
+  if (SUPPORTISH_WITHOUT_SUPPORT_TAG.has(sn) || SUPPORTISH_WITHOUT_SUPPORT_TAG.has(hero.name)) {
+    if (position === 4 || position === 5) return 3.5
+    if (position === 3) return 0.5
+    return -4
+  }
+
   const needed = POSITION_ROLES[position] ?? []
+  const isSupport = hero.roles.includes('Support')
+  const isCarry = hero.roles.includes('Carry')
+
+  // Support heroes should not be suggested as mid/carry first
+  if (isSupport && !isCarry) {
+    if (position === 4 || position === 5) return 3.5
+    if (position === 3) return 1
+    return -3.5
+  }
+  if (isSupport && isCarry) {
+    if (position === 1 || position === 4 || position === 5) return 3
+    if (position === 3) return 1.5
+    return -1
+  }
+
   const matches = hero.roles.filter((r) => needed.includes(r)).length
   if (matches > 0) return 3 + (matches - 1) * 0.5
-  // Partial fit — e.g. Nuker can mid without Carry tag
-  if (position === 2 && hero.roles.includes('Nuker')) return 2
+
+  if (position === 2 && hero.roles.includes('Nuker') && !isSupport) return 2
   if (position === 3 && (hero.roles.includes('Durable') || hero.roles.includes('Initiator'))) return 1.5
   return -3
 }
@@ -441,35 +505,43 @@ export function scoreRecommendations(
 ): ScoredRecommendation {
   const tags: RecommendationTag[] = []
 
-  // 1. Meta / Pro Performance (Max 25 pts)
+  // 1. Meta — soft bias only (Max 8 pts). Prefer draft context over winrate.
   const wr = winRates.get(candidate.id) ?? 50
-  let metaComponent = 12.5 + (wr - 50) * 2.5 // 50% -> 12.5, 55% -> 25, 45% -> 0
-  metaComponent = Math.min(25, Math.max(0, metaComponent))
-  if (wr >= 51.5) {
-    tags.push({ label: 'meta pick', type: 'meta' })
+  let metaComponent = Math.min(8, Math.max(0, (wr - 48) * 0.8))
+  if (wr >= 53 && teamHeroes.length + enemyHeroes.length === 0) {
+    tags.push({ label: 'solid WR', type: 'meta' })
   }
 
-  // 2. Synergy Component (Max 25 pts)
-  let synergyComponent = 10 // Start with baseline synergy
+  // 2. Synergy (Max 38 pts) — main signal once allies exist
+  let synergyComponent = 0
+  let synergyHits = 0
   for (const ally of teamHeroes) {
     const syn = getSynergyEntry(candidate, ally)
     if (syn) {
-      synergyComponent += syn.synergyScore * 1.5 // e.g. score of 6 -> +9 pts
-      tags.push({ label: `synergy w/ ${ally.localizedName}`, type: 'synergy' })
+      synergyHits++
+      synergyComponent += syn.synergyScore * 2.2
+      if (tags.length < 4) {
+        tags.push({ label: `synergy w/ ${ally.localizedName}`, type: 'synergy' })
+      }
     }
   }
   const missingRoles = teamMissingRoles(teamHeroes)
   for (const role of candidate.roles) {
     if (missingRoles.has(role)) {
-      synergyComponent += 3.5
+      synergyComponent += 5
       tags.push({ label: `fills ${role}`, type: 'role' })
       break
     }
   }
-  synergyComponent = Math.min(25, Math.max(0, synergyComponent))
+  if (!teamHeroes.length) {
+    synergyComponent = 4 // small baseline when no allies yet
+  } else if (synergyHits === 0) {
+    synergyComponent += 2
+  }
+  synergyComponent = Math.min(38, Math.max(0, synergyComponent))
 
-  // 3. Matchup / Counter Component (Max 30 pts)
-  let matchupComponent = 15 // Start with neutral matchups
+  // 3. Matchup / Counter (Max 40 pts) — primary when enemies are known
+  let matchupComponent = 0
   for (const enemy of enemyHeroes) {
     let winRateAgainst = 50
     let hasDynamic = false
@@ -494,50 +566,64 @@ export function scoreRecommendations(
 
     if (hasDynamic) {
       const diff = winRateAgainst - 50
-      matchupComponent += diff * 2.0 // E.g., win rate 55% vs them -> +10 pts
-      if (diff >= 3) {
+      matchupComponent += diff * 2.4
+      if (diff >= 2.5) {
         tags.push({ label: `good vs ${enemy.localizedName}`, type: 'counter' })
-      } else if (diff <= -3) {
+      } else if (diff <= -2.5) {
         tags.push({ label: `weak vs ${enemy.localizedName}`, type: 'counter' })
       }
     } else {
       const entry = getCounterEntry(candidate, enemy)
       if (entry && entry.counter.id === candidate.id) {
-        const bonus = entry.severity === 'high' ? 8 : entry.severity === 'medium' ? 5 : 2
+        const bonus = entry.severity === 'high' ? 11 : entry.severity === 'medium' ? 7 : 3
         matchupComponent += bonus
         tags.push({ label: `counters ${enemy.localizedName}`, type: 'counter' })
       } else if (entry && entry.victim.id === candidate.id) {
-        const penalty = entry.severity === 'high' ? 7 : entry.severity === 'medium' ? 4 : 2
+        const penalty = entry.severity === 'high' ? 10 : entry.severity === 'medium' ? 6 : 3
         matchupComponent -= penalty
       }
     }
   }
-  matchupComponent = Math.min(30, Math.max(0, matchupComponent))
+  if (!enemyHeroes.length) {
+    matchupComponent = 5
+  } else {
+    matchupComponent = matchupComponent / Math.max(1, Math.sqrt(enemyHeroes.length)) + 8
+  }
+  matchupComponent = Math.min(40, Math.max(0, matchupComponent))
 
-  // 4. Role & Lane Fit Component (Max 20 pts)
+  // 4. Role & Lane Fit (Max 18 pts)
   const roleFit = roleFitScore(candidate, position)
   let roleFitComponent = 0
-  if (roleFit >= 3) {
-    roleFitComponent = 20
+  if (roleFit >= 3.5) {
+    roleFitComponent = 18
     tags.push({ label: POSITION_LABELS[position] ?? `pos ${position}`, type: 'role' })
-  } else if (roleFit === 2) {
-    roleFitComponent = 15
-  } else if (roleFit === 1.5) {
-    roleFitComponent = 10
+  } else if (roleFit >= 3) {
+    roleFitComponent = 16
+    tags.push({ label: POSITION_LABELS[position] ?? `pos ${position}`, type: 'role' })
+  } else if (roleFit >= 2) {
+    roleFitComponent = 11
+  } else if (roleFit >= 1) {
+    roleFitComponent = 7
+  } else if (roleFit >= 0) {
+    roleFitComponent = 3
   } else {
-    roleFitComponent = 2 // Bad role fit
+    roleFitComponent = 0
   }
-  roleFitComponent = Math.min(20, Math.max(0, roleFitComponent))
 
-  // Sum total out of 100
+  // Prefer drafting into the earliest empty role (already scored per position)
   let totalScore = metaComponent + synergyComponent + matchupComponent + roleFitComponent
   totalScore = Math.min(100, Math.max(1, totalScore))
 
-  const uniqueTags = [...new Map(tags.map((t) => [t.label, t])).values()].slice(0, 3)
+  // Prefer synergy/counter tags in the reason string
+  const priorityTags = [...tags].sort((a, b) => {
+    const order = { synergy: 0, counter: 1, role: 2, meta: 3 }
+    return order[a.type] - order[b.type]
+  })
+  const uniqueTags = [...new Map(priorityTags.map((t) => [t.label, t])).values()].slice(0, 3)
   const reason =
     uniqueTags.length > 0
       ? uniqueTags.map((t) => t.label).join(' · ')
-      : `Strong ${POSITION_LABELS[position] ?? 'flex'} option`
+      : `Fits ${POSITION_LABELS[position] ?? 'flex'}`
 
   return {
     hero: candidate,
@@ -586,13 +672,16 @@ export function getRecommendations(
   emptyPositions: number[],
   winRates: Map<number, number>,
   matchupsCache?: Record<number, Record<number, { wins: number; games: number }>>,
-  limit = 500,
+  limit = 12,
 ): ScoredRecommendation[] {
   const positions = orderEmptyPositions(emptyPositions)
   const bestByHero = new Map<number, ScoredRecommendation>()
 
   for (const position of positions) {
     for (const hero of available) {
+      // Skip heroes that are a terrible fit for this lane (keeps mid clear of supports)
+      if (roleFitScore(hero, position) < 0) continue
+
       const scored = scoreRecommendations(
         hero,
         team,
@@ -609,10 +698,8 @@ export function getRecommendations(
     }
   }
 
-  // Sort descending again (best to worst)
   const results = [...bestByHero.values()].sort((a, b) => b.score - a.score)
 
-  // Ensure variety across positions in top picks
   const byPosition = new Map<number, ScoredRecommendation[]>()
   for (const rec of results) {
     const pos = rec.suggestedPosition
@@ -623,12 +710,19 @@ export function getRecommendations(
   const diversified: ScoredRecommendation[] = []
   const usedIds = new Set<number>()
 
-  for (const pos of positions) {
-    const pool = byPosition.get(pos) ?? []
-    const pick = pool.find((r) => !usedIds.has(r.hero.id))
-    if (pick) {
-      diversified.push(pick)
-      usedIds.add(pick.hero.id)
+  // Round-robin across empty positions so top list isn't 12 meta carries
+  let added = true
+  while (diversified.length < limit && added) {
+    added = false
+    for (const pos of positions) {
+      if (diversified.length >= limit) break
+      const pool = byPosition.get(pos) ?? []
+      const pick = pool.find((r) => !usedIds.has(r.hero.id))
+      if (pick) {
+        diversified.push(pick)
+        usedIds.add(pick.hero.id)
+        added = true
+      }
     }
   }
 
@@ -640,10 +734,7 @@ export function getRecommendations(
     }
   }
 
-  return diversified.slice(0, limit).map((rec) => ({
-    ...rec,
-    score: rec.score,
-  }))
+  return diversified.slice(0, limit)
 }
 
 export function getUsedHeroIds(

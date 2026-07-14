@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useDraftsMainStore } from '../../stores/draftsMain'
-import { setLocale, LOCALES, type AppLocale } from '../../i18n'
+import { setLocale, LOCALES } from '../../i18n'
 import { useRoute } from 'vue-router'
 
 const { t, locale } = useI18n()
@@ -14,18 +14,24 @@ const { activePatch, activeRank, isSteamConnected } = storeToRefs(store)
 const route = useRoute()
 
 const navItems = computed(() => [
-  { key: 'draft',  label: t('nav.draft'), to: '/' },
+  { key: 'draft', label: t('nav.draft'), to: '/' },
+  { key: 'sandbox', label: t('nav.sandbox'), to: '/sandbox' },
   { key: 'heroes', label: t('nav.heroes'), to: '/heroes' },
-  { key: 'meta',   label: t('nav.meta'), to: '/meta' },
-  { key: 'about',  label: t('nav.about'), to: '/about' },
+  { key: 'meta', label: t('nav.meta'), to: '/meta' },
+  { key: 'about', label: t('nav.about'), to: '/about' },
 ])
+
+function isActive(key: string) {
+  if (key === 'heroes') return route.name === 'heroes' || route.name === 'hero-detail'
+  return route.name === key
+}
 </script>
 
 <template lang="pug">
 header.app-header
   .header-inner
     .logo-nav
-      .logo
+      router-link.logo(to="/" aria-label="Dota Drafts home")
         svg.logo-icon(width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg")
           path(d="M12 2L3 7v5c0 5.5 3.8 10.7 9 12 5.2-1.3 9-6.5 9-12V7L12 2z" fill="#e5b53b")
         span.logo-dota DOTA
@@ -35,7 +41,7 @@ header.app-header
           v-for="item in navItems"
           :key="item.key"
           :to="item.to"
-          :class="{ active: route.name === item.key }"
+          :class="{ active: isActive(item.key) }"
         ) {{ item.label }}
 
     .header-right
@@ -50,7 +56,6 @@ header.app-header
       .filters-row
         span.chip {{ activePatch.label }}
         span.chip {{ activeRank.label }}
-        span.chip.role-chip {{ t('header.allRoles') }}
       button.steam-btn(v-if="!isSteamConnected" type="button" @click="store.connectSteam")
         | {{ t('header.connectSteam') }}
       .user-avatar(v-else)
@@ -59,9 +64,13 @@ header.app-header
 
 <style lang="scss" scoped>
 .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 900;
   width: 100%;
   min-height: 60px;
-  background: var(--dd-bg-elevated);
+  background: rgba(12, 16, 24, 0.94);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--dd-border);
   display: flex;
   align-items: center;
@@ -78,18 +87,25 @@ header.app-header
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 0;
 }
 
 .logo-nav {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 20px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 8px;
+  text-decoration: none;
+  flex-shrink: 0;
 
   &-dota {
     font-family: 'Outfit', sans-serif;
@@ -109,11 +125,8 @@ header.app-header
 .nav-items {
   display: flex;
   align-items: center;
-  gap: 20px;
-
-  @media (max-width: 900px) {
-    display: none;
-  }
+  gap: 8px 16px;
+  flex-wrap: wrap;
 }
 
 .nav-item {
@@ -121,12 +134,13 @@ header.app-header
   border: none;
   cursor: pointer;
   font-family: 'Outfit', sans-serif;
-  font-size: 15px;
+  font-size: 14px;
   color: #9ca3af;
   padding: 4px 0;
   position: relative;
   transition: color 0.2s;
   text-decoration: none;
+  white-space: nowrap;
 
   &::after {
     content: '';
@@ -158,17 +172,15 @@ header.app-header
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .filters-row {
   display: flex;
   align-items: center;
   gap: 6px;
-
-  @media (max-width: 600px) {
-    .role-chip { display: none; }
-  }
 }
 
 .chip {
@@ -221,10 +233,6 @@ header.app-header
   background: var(--dd-bg-card);
   border: 1px solid var(--dd-border-subtle);
   border-radius: var(--dd-radius-sm);
-
-  @media (max-width: 600px) {
-    display: none;
-  }
 }
 
 .lang-btn {

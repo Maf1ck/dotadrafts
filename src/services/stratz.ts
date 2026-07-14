@@ -286,41 +286,116 @@ export async function fetchHeroItems(heroId: number): Promise<StratzHeroItems> {
 /** Stratz item constants cache */
 let itemConstantsCache: Record<string, { displayName: string; shortName: string }> | null = null
 
+export interface StratzItemMeta {
+  id: number
+  displayName: string
+  shortName: string
+  isNeutral: boolean | null
+  neutralTier: number | null
+  cost: number | null
+}
+
+let stratzItemMetaCache: StratzItemMeta[] | null = null
+let stratzItemMetaPromise: Promise<StratzItemMeta[]> | null = null
+
+export function clearStratzItemMetaCache() {
+  stratzItemMetaCache = null
+  stratzItemMetaPromise = null
+  itemConstantsCache = null
+}
+
+/**
+ * Fetch full item catalog from Stratz constants.
+ * Tries richest field set first; peels fields if schema rejects them.
+ */
+export async function fetchStratzItemMeta(): Promise<StratzItemMeta[]> {
+  if (stratzItemMetaCache) return stratzItemMetaCache
+  if (stratzItemMetaPromise) return stratzItemMetaPromise
+  if (!STRATZ_TOKEN) return []
+
+  stratzItemMetaPromise = (async () => {
+    const fieldSets = [
+      'id displayName shortName isNeutral neutralItemTier cost',
+      'id displayName shortName isNeutral neutralItemTier',
+      'id displayName shortName isNeutral cost',
+      'id displayName shortName cost',
+      'id displayName shortName',
+    ]
+
+    const tryQuery = async (fields: string) => {
+      const data = await gql<{
+        constants: {
+          items: {
+            id: number
+            displayName?: string | null
+            shortName?: string | null
+            isNeutral?: boolean | null
+            neutralItemTier?: number | null
+            cost?: number | null
+          }[]
+        }
+      }>(
+        `{
+          constants {
+            items {
+              ${fields}
+            }
+          }
+        }`,
+      )
+      return (data.constants.items ?? [])
+        .filter((item) => typeof item.id === 'number' && item.id > 0)
+        .map((item) => ({
+          id: item.id,
+          displayName: item.displayName?.trim() || item.shortName || String(item.id),
+          shortName: (item.shortName || '').replace(/^item_/, ''),
+          isNeutral: typeof item.isNeutral === 'boolean' ? item.isNeutral : null,
+          neutralTier:
+            typeof item.neutralItemTier === 'number' ? item.neutralItemTier : null,
+          cost: typeof item.cost === 'number' ? item.cost : null,
+        }))
+    }
+
+    try {
+      let lastError: unknown = null
+      for (const fields of fieldSets) {
+        try {
+          stratzItemMetaCache = await tryQuery(fields)
+          if (stratzItemMetaCache.length) return stratzItemMetaCache
+        } catch (e) {
+          lastError = e
+        }
+      }
+      if (lastError) console.warn('[Stratz] item meta fetch failed:', lastError)
+      stratzItemMetaCache = []
+      return stratzItemMetaCache
+    } finally {
+      stratzItemMetaPromise = null
+    }
+  })()
+
+  return stratzItemMetaPromise
+}
+
 export async function fetchItemConstants(): Promise<
   Record<string, { displayName: string; shortName: string }>
 > {
   if (itemConstantsCache) return itemConstantsCache
 
   try {
-    const data = await gql<{
-      constants: {
-        items: {
-          id: number
-          displayName: string
-          shortName: string
-        }[]
-      }
-    }>(
-      `{
-        constants {
-          items {
-            id
-            displayName
-            shortName
-          }
+    const meta = await fetchStratzItemMeta()
+    if (meta.length) {
+      const map: Record<string, { displayName: string; shortName: string }> = {}
+      for (const item of meta) {
+        map[String(item.id)] = {
+          displayName: item.displayName,
+          shortName: item.shortName,
         }
-      }`,
-    )
-
-    const map: Record<string, { displayName: string; shortName: string }> = {}
-    for (const item of data.constants.items) {
-      map[String(item.id)] = {
-        displayName: item.displayName,
-        shortName: item.shortName,
       }
+      itemConstantsCache = map
+      return map
     }
-    itemConstantsCache = map
-    return map
+    throw new Error('empty Stratz item meta')
   } catch (e) {
     console.warn('[Stratz] failed to fetch item constants, trying OpenDota fallback:', e)
     try {

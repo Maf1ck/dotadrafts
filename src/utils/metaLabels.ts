@@ -17,6 +17,10 @@ const META_UA: Record<string, { label: string; hint: string }> = {
     label: 'Мета',
     hint: 'Середній винрейт піків відносно патчу',
   },
+  'Item Builds': {
+    label: 'Білди',
+    hint: 'Вплив предметів зі sandbox на шанс перемоги',
+  },
 }
 
 export function metaLabelUa(key: string): string {

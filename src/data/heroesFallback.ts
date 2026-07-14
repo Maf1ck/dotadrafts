@@ -846,6 +846,7 @@ export const FALLBACK_HEROES: FallbackHero[] = [
     "primary_attr": "agi",
     "attack_type": "Melee",
     "roles": [
+      "Support",
       "Escape",
       "Nuker"
     ],

@@ -1,12 +1,32 @@
 /**
- * OpenDota item builds — reliable fallback when Stratz is blocked / empty.
+ * Item constants catalog.
+ * Primary: Stratz GraphQL constants (neutral flags, tiers, costs).
+ * Fallback: OpenDota constants (+ patch allowlists).
+ * Images always via Steam CDN shortName.
  */
+import {
+  isHiddenCatalogItem,
+  isCurrentNeutral,
+  isShopExcluded,
+  neutralTierFor,
+  normalizeShortName,
+  CYCLED_NEUTRAL_SHORTNAMES,
+} from '../data/patchItems'
+import {
+  clearStratzItemMetaCache,
+  fetchStratzItemMeta,
+  type StratzItemMeta,
+} from './stratz'
 
 export interface ItemInfo {
   id: number
   shortName: string
   displayName: string
   imageUrl: string
+  /** Neutral artifact tier 1–5 when known */
+  tier: number | null
+  isNeutral: boolean
+  cost: number
 }
 
 export interface PopularityBucket {
@@ -31,29 +51,162 @@ export function itemCdnUrl(shortName: string): string {
   return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/${shortName}.png`
 }
 
-export async function fetchItemConstantsMap(): Promise<Record<number, ItemInfo>> {
-  if (constantsCache) return constantsCache
+/** Force reload after patch-list updates (HMR / testing) */
+export function clearItemConstantsCache() {
+  constantsCache = null
+  clearStratzItemMetaCache()
+}
+
+function resolveIsNeutral(sn: string, stratzNeutral: boolean | null): boolean {
+  if (stratzNeutral === true) {
+    // Trust Stratz current patch, but drop known cycled leftovers
+    if (CYCLED_NEUTRAL_SHORTNAMES.has(sn) && !isCurrentNeutral(sn)) return false
+    return true
+  }
+  if (stratzNeutral === false) return isCurrentNeutral(sn)
+  return isCurrentNeutral(sn)
+}
+
+function toItemInfo(opts: {
+  id: number
+  shortName: string
+  displayName: string
+  isNeutral: boolean
+  tier: number | null
+  cost: number
+}): ItemInfo | null {
+  const sn = normalizeShortName(opts.shortName)
+  if (!sn) return null
+  if (isHiddenCatalogItem(sn, opts.displayName)) return null
+  if (opts.isNeutral && !isCurrentNeutral(sn) && CYCLED_NEUTRAL_SHORTNAMES.has(sn)) {
+    return null
+  }
+  // Neutrals must be on the current patch list (or enchanted)
+  if (opts.isNeutral && !isCurrentNeutral(sn)) return null
+  if (!opts.isNeutral && isShopExcluded(sn, false)) return null
+
+  return {
+    id: opts.id,
+    shortName: sn,
+    displayName: opts.displayName || sn,
+    imageUrl: itemCdnUrl(sn),
+    tier: opts.isNeutral ? opts.tier ?? neutralTierFor(sn) : null,
+    isNeutral: opts.isNeutral,
+    cost: opts.cost,
+  }
+}
+
+function buildFromStratz(meta: StratzItemMeta[]): Record<number, ItemInfo> {
+  const map: Record<number, ItemInfo> = {}
+  for (const m of meta) {
+    const sn = normalizeShortName(m.shortName)
+    const isNeutral = resolveIsNeutral(sn, m.isNeutral)
+    const info = toItemInfo({
+      id: m.id,
+      shortName: sn,
+      displayName: m.displayName,
+      isNeutral,
+      tier: m.neutralTier ?? neutralTierFor(sn),
+      cost: m.cost ?? 0,
+    })
+    if (info) map[info.id] = info
+  }
+  return map
+}
+
+async function fetchOpenDotaRaw(): Promise<
+  Record<string, { id?: number; dname?: string; tier?: number; cost?: number }>
+> {
+  const odRes = await fetch('https://api.opendota.com/api/constants/items')
+  if (!odRes.ok) throw new Error(`OpenDota constants ${odRes.status}`)
+  return odRes.json()
+}
+
+function buildFromOpenDota(
+  data: Record<string, { id?: number; dname?: string; tier?: number; cost?: number }>,
+  stratzById?: Map<number, StratzItemMeta>,
+  stratzByShort?: Map<string, StratzItemMeta>,
+): Record<number, ItemInfo> {
+  const map: Record<number, ItemInfo> = {}
+  for (const [shortName, item] of Object.entries(data)) {
+    if (typeof item?.id !== 'number' || item.id <= 0) continue
+    const sn = normalizeShortName(shortName)
+    const displayName = item.dname || shortName
+    const stratz = stratzById?.get(item.id) ?? stratzByShort?.get(sn)
+    const openDotaTier = typeof item.tier === 'number' ? item.tier : null
+
+    let isNeutral = resolveIsNeutral(sn, stratz?.isNeutral ?? null)
+    // OpenDota still tags many cycled neutrals with tier — skip unknowns
+    if (openDotaTier != null && !isNeutral) continue
+    if (stratz?.isNeutral === true && !isCurrentNeutral(sn)) continue
+
+    const info = toItemInfo({
+      id: item.id,
+      shortName: sn,
+      displayName: stratz?.displayName || displayName,
+      isNeutral,
+      tier: isNeutral
+        ? neutralTierFor(sn) ?? openDotaTier ?? stratz?.neutralTier ?? null
+        : null,
+      cost: stratz?.cost ?? (typeof item.cost === 'number' ? item.cost : 0),
+    })
+    if (info) map[info.id] = info
+  }
+  return map
+}
+
+export function fetchItemConstantsMap(): Promise<Record<number, ItemInfo>> {
+  if (constantsCache) return Promise.resolve(constantsCache)
   if (constantsPromise) return constantsPromise
 
   constantsPromise = (async () => {
     try {
-      const res = await fetch('https://api.opendota.com/api/constants/items')
-      if (!res.ok) throw new Error(`OpenDota constants ${res.status}`)
-      const data: Record<string, { id?: number; dname?: string }> = await res.json()
-      const map: Record<number, ItemInfo> = {}
-      for (const [shortName, item] of Object.entries(data)) {
-        if (typeof item?.id !== 'number' || item.id <= 0) continue
-        map[item.id] = {
-          id: item.id,
-          shortName,
-          displayName: item.dname || shortName,
-          imageUrl: itemCdnUrl(shortName),
+      // 1) Stratz-first
+      const stratzMeta = await fetchStratzItemMeta().catch(() => [] as StratzItemMeta[])
+      if (stratzMeta.length) {
+        const fromStratz = buildFromStratz(stratzMeta)
+        // Fill missing cost / gaps from OpenDota when possible
+        try {
+          const od = await fetchOpenDotaRaw()
+          for (const [shortName, item] of Object.entries(od)) {
+            if (typeof item?.id !== 'number') continue
+            const sn = normalizeShortName(shortName)
+            const existing = fromStratz[item.id]
+            if (existing) {
+              if (!existing.cost && typeof item.cost === 'number') {
+                existing.cost = item.cost
+              }
+              if (existing.isNeutral && existing.tier == null && typeof item.tier === 'number') {
+                existing.tier = item.tier
+              }
+              continue
+            }
+            // Current neutrals missing from Stratz but present in OD
+            if (!isCurrentNeutral(sn)) continue
+            const info = toItemInfo({
+              id: item.id,
+              shortName: sn,
+              displayName: item.dname || sn,
+              isNeutral: true,
+              tier: neutralTierFor(sn) ?? (typeof item.tier === 'number' ? item.tier : null),
+              cost: 0,
+            })
+            if (info) fromStratz[info.id] = info
+          }
+        } catch {
+          /* CDN/cost enrichment optional */
         }
+        constantsCache = fromStratz
+        return fromStratz
       }
-      constantsCache = map
-      return map
+
+      // 2) OpenDota fallback (no Stratz key / empty response)
+      console.warn('[Items] Stratz unavailable — falling back to OpenDota constants')
+      const od = await fetchOpenDotaRaw()
+      constantsCache = buildFromOpenDota(od)
+      return constantsCache
     } catch (e) {
-      console.warn('[OpenDota] constants/items failed:', e)
+      console.warn('[Items] constants fetch failed:', e)
       constantsCache = {}
       return constantsCache
     } finally {
@@ -115,6 +268,7 @@ export function resolvePopularItems(
   for (const b of buckets) {
     const info = constants[b.itemId]
     if (!info) continue
+    if (info.isNeutral || isShopExcluded(info.shortName, info.isNeutral)) continue
     out.push({
       id: info.id,
       name: info.displayName,
@@ -123,4 +277,20 @@ export function resolvePopularItems(
     })
   }
   return out
+}
+
+export function listShopItems(constants: Record<number, ItemInfo>): ItemInfo[] {
+  return Object.values(constants)
+    .filter((i) => !isShopExcluded(i.shortName, i.isNeutral))
+    .filter((i) => !i.isNeutral)
+    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+}
+
+export function listNeutralItems(constants: Record<number, ItemInfo>): ItemInfo[] {
+  return Object.values(constants)
+    .filter((i) => i.isNeutral && isCurrentNeutral(i.shortName))
+    .sort(
+      (a, b) =>
+        (a.tier ?? 99) - (b.tier ?? 99) || a.displayName.localeCompare(b.displayName),
+    )
 }

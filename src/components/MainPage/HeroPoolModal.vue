@@ -34,6 +34,18 @@ Transition(name="picker-fade")
         .picker-titles
           span.picker-label {{ t('pool.label', { count: store.heroPoolFilter.size }) }}
           h2.picker-title {{ t('pool.title') }}
+          p.pool-hint {{ t('pool.myTeamHint') }}
+          .my-team-toggle
+            button.fp-btn(
+              type="button"
+              :class="{ active: store.myTeam === 'radiant' }"
+              @click="store.setMyTeam('radiant')"
+            ) Radiant
+            button.fp-btn(
+              type="button"
+              :class="{ active: store.myTeam === 'dire' }"
+              @click="store.setMyTeam('dire')"
+            ) Dire
         .header-actions
           button.clear-btn(type="button" @click="store.clearHeroPool" v-if="store.heroPoolFilter.size > 0") {{ t('pool.clear') }}
           button.close-btn(type="button" aria-label="Close" @click="store.poolModalOpen = false")
@@ -148,6 +160,44 @@ Transition(name="picker-fade")
   font-size: 20px;
   font-weight: 700;
   color: #f3f4f6;
+}
+
+.pool-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.35;
+  max-width: 320px;
+}
+
+.my-team-toggle {
+  display: inline-flex;
+  gap: 3px;
+  margin-top: 8px;
+  padding: 2px;
+  background: #141a24;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.fp-btn {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  color: #9ca3af;
+  cursor: pointer;
+
+  &.active {
+    background: #0c1018;
+    color: #f3f4f6;
+  }
+
+  &:first-child.active { color: #3dd6c8; }
+  &:last-child.active { color: #e85d7a; }
 }
 
 .clear-btn {

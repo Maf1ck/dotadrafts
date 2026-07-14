@@ -20,6 +20,11 @@ const router = createRouter({
       component: () => import('../pages/HeroDetailPage.vue'),
     },
     {
+      path: '/sandbox',
+      name: 'sandbox',
+      component: () => import('../pages/SandboxPage.vue'),
+    },
+    {
       path: '/meta',
       name: 'meta',
       component: () => import('../pages/MetaPage.vue'),

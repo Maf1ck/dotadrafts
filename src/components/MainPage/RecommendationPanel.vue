@@ -7,9 +7,12 @@ import { useDraftsMainStore } from '../../stores/draftsMain'
 interface Props {
   recommendations: RecommendedHero[]
   forTeam: TeamSide
+  actionType?: 'pick' | 'ban'
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  actionType: 'pick',
+})
 
 const emit = defineEmits<{
   pick: [rec: RecommendedHero]
@@ -18,22 +21,23 @@ const emit = defineEmits<{
 
 const store = useDraftsMainStore()
 const { t } = useI18n()
-const teamLabel = computed(() => (props.forTeam === 'radiant' ? 'Radiant' : 'Dire'))
+const isForUs = computed(() => props.forTeam === store.myTeam)
+const teamLabel = computed(() => (isForUs.value ? t('rec.forUs') : t('rec.forEnemy')))
+const isBanPhase = computed(() => props.actionType === 'ban')
+const enemySide = computed<TeamSide>(() => (store.myTeam === 'radiant' ? 'dire' : 'radiant'))
 
 const poolBtnText = computed(() => {
-  if (store.heroPoolFilter.size === 0) {
-    return t('rec.poolAll', 'Pool: All')
-  }
-  return t('rec.poolCount', { count: store.heroPoolFilter.size }, `Pool: ${store.heroPoolFilter.size} Heroes`)
+  if (store.heroPoolFilter.size === 0) return t('rec.poolAllMine')
+  return t('rec.poolCountMine', { count: store.heroPoolFilter.size })
 })
 </script>
 
 <template lang="pug">
 .recommendation-panel
   .rec-header
-    div
-      h2.rec-title {{ t('rec.title') }}
-      p.rec-desc {{ t('rec.bestFor', { team: teamLabel }) }}
+    .rec-heading
+      h2.rec-title {{ isBanPhase ? t('rec.titleBan') : t('rec.title') }}
+      p.rec-desc {{ isBanPhase ? t('rec.bestBan', { team: teamLabel }) : t('rec.bestFor', { team: teamLabel }) }}
     .header-controls
       button.pool-filter-btn(
         type="button"
@@ -43,34 +47,34 @@ const poolBtnText = computed(() => {
         svg.pool-icon(width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2")
           polygon(points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3")
         span {{ poolBtnText }}
-      .team-toggle
+      .team-toggle(v-if="store.draftMode === 'manual'")
         button.toggle-btn(
           type="button"
-          :class="{ active: forTeam === 'radiant' }"
-          @click="emit('switchTeam', 'radiant')"
-        ) Radiant
+          :class="{ active: isForUs, us: true }"
+          @click="emit('switchTeam', store.myTeam)"
+        ) {{ t('rec.us') }}
         button.toggle-btn(
           type="button"
-          :class="{ active: forTeam === 'dire' }"
-          @click="emit('switchTeam', 'dire')"
-        ) Dire
+          :class="{ active: !isForUs, enemy: true }"
+          @click="emit('switchTeam', enemySide)"
+        ) {{ t('rec.enemy') }}
 
-  .rec-empty(v-if="!recommendations.length") {{ t('rec.allFilled', { team: teamLabel }) }}
+  .rec-empty(v-if="!recommendations.length") {{ isForUs ? t('rec.allFilledUs') : t('rec.allFilledEnemy') }}
 
   .rec-list(v-else)
     button.rec-card(
       v-for="(rec, i) in recommendations"
       :key="`${forTeam}-${rec.hero.id}-${rec.suggestedPosition ?? i}`"
       type="button"
-      :class="{ top: i === 0 }"
+      :class="{ top: i === 0, ban: isBanPhase }"
       @click="emit('pick', rec)"
     )
       img.rec-hero-img(:src="rec.hero.imageUrl" :alt="rec.hero.localizedName")
       .rec-info
         span.rec-hero-name {{ rec.hero.localizedName }}
-        span.rec-role {{ rec.role }}
+        span.rec-role {{ isBanPhase ? t('rec.banHint') : rec.role }}
         span.rec-reason {{ rec.reason }}
-      span.score-badge(:class="{ high: rec.score >= 80 }") {{ rec.score.toFixed(0) }}
+      span.score-badge(:class="{ high: rec.score >= 70 }") {{ rec.score.toFixed(0) }}
 </template>
 
 <style lang="scss" scoped>
@@ -82,6 +86,8 @@ const poolBtnText = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .rec-header {
@@ -89,6 +95,13 @@ const poolBtnText = computed(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.rec-heading {
+  min-width: 0;
+  flex: 1 1 120px;
 }
 
 .rec-title {
@@ -108,13 +121,18 @@ const poolBtnText = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .pool-filter-btn {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
   padding: 5px 10px;
   background: var(--dd-bg-elevated);
   border: 1px solid var(--dd-border-subtle);
@@ -125,6 +143,12 @@ const poolBtnText = computed(() => {
   color: var(--dd-text-dim);
   cursor: pointer;
   transition: all 0.15s;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   &:hover {
     color: var(--dd-text);
@@ -169,8 +193,8 @@ const poolBtnText = computed(() => {
     color: var(--dd-text);
   }
 
-  &:first-child.active { color: var(--dd-radiant); }
-  &:last-child.active { color: var(--dd-dire); }
+  &.us.active { color: var(--dd-radiant); }
+  &.enemy.active { color: var(--dd-dire); }
 }
 
 .rec-empty {
@@ -214,6 +238,10 @@ const poolBtnText = computed(() => {
 
   &.top {
     border-color: rgba(212, 168, 67, 0.35);
+  }
+
+  &.ban.top {
+    border-color: rgba(232, 93, 122, 0.4);
   }
 }
 

@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { WinPrediction } from '../../types/draft'
+import { useDraftsMainStore } from '../../stores/draftsMain'
 
 interface Props {
   prediction: WinPrediction
@@ -9,6 +10,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const { t } = useI18n()
+const store = useDraftsMainStore()
 
 const radiantWidth = computed(() => `${props.prediction.radiantWinRate}%`)
 const direWidth = computed(() => `${props.prediction.direWinRate}%`)
@@ -44,6 +46,8 @@ const deltaText = computed(() => {
 
   .delta-badge(:class="prediction.deltaHero ? prediction.deltaTeam : 'neutral'")
     span {{ deltaText }}
+  p.build-hint(v-if="store.radiantBuildScore + store.direBuildScore > 0.05")
+    | {{ t('prob.buildHint') }}
 </template>
 
 <style lang="scss" scoped>
@@ -158,5 +162,13 @@ const deltaText = computed(() => {
     border-color: rgba(232, 93, 122, 0.2);
     span { color: var(--dd-dire); font-weight: 600; }
   }
+}
+
+.build-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--dd-text-dim);
+  text-align: center;
+  line-height: 1.35;
 }
 </style>

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import { useDraftsMainStore } from '../stores/draftsMain'
 import { HERO_COUNTERS, HERO_SYNERGIES } from '../data/matchups'
+import { suggestedLaneLabel } from '../data/heroPositions'
 
 const route = useRoute()
 const router = useRouter()
@@ -325,11 +326,7 @@ const baseStats = computed(() => {
 // Recommended positions
 const recommendedLane = computed(() => {
   if (!hero.value) return 'Unknown'
-  const roles = hero.value.roles
-  if (roles.includes('Carry')) return 'Safe Lane (Position 1)'
-  if (roles.includes('Support')) return 'Hard/Soft Support (Position 4/5)'
-  if (roles.includes('Initiator') && roles.includes('Durable')) return 'Offlane (Position 3)'
-  return 'Mid Lane (Position 2)'
+  return suggestedLaneLabel(hero.value.name, hero.value.roles)
 })
 
 useHead(computed(() => ({
