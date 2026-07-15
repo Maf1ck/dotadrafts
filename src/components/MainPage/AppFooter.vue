@@ -13,11 +13,11 @@ footer.app-footer
       span.brand-drafts DRAFTS
       p.tagline {{ t('footer.tagline') }}
     nav.footer-nav
-      router-link(to="/") {{ t('nav.draft') }}
+      router-link(to="/") {{ t('nav.about') }}
+      router-link(to="/draft") {{ t('nav.draft') }}
       router-link(to="/sandbox") {{ t('nav.sandbox') }}
       router-link(to="/heroes") {{ t('nav.heroes') }}
       router-link(to="/meta") {{ t('nav.meta') }}
-      router-link(to="/about") {{ t('nav.about') }}
     p.copy © {{ year }} Dota Drafts · {{ t('footer.copy') }}
 </template>
 

@@ -9,12 +9,31 @@ export const REMOVED_SHOP_SHORTNAMES = new Set([
   'eternal_shroud',
   'falcon_blade',
   'orb_of_destruction',
-  'bloodstone', // removed in 7.41
-  // recipes / junk still appear as purchasable in old dumps
+  'bloodstone',
+  'necronomicon',
+  'necronomicon_2',
+  'necronomicon_3',
+  'diffusal_blade_2',
   'river_painter',
   'mutated_milk',
   'pocket_roshan',
   'pocket_tower',
+  'flying_courier',
+  'courier',
+])
+
+/** Roshan / objective drops — never in shop or build catalog */
+export const ROSHAN_DROP_SHORTNAMES = new Set([
+  'aegis',
+  'cheese',
+  'refresher_shard',
+  'aghanims_blessing',
+  'aghanims_blessing_roshan',
+  'ultimate_scepter_2',
+  'ultimate_scepter_roshan',
+  'roshan_banner',
+  'black_grimoire',
+  'block_of_cheese',
 ])
 
 /**
@@ -270,8 +289,13 @@ export function neutralTierFor(shortName: string): number | null {
 
 export function isHiddenCatalogItem(shortName: string, displayName?: string): boolean {
   const s = normalizeShortName(shortName)
-  if (s.startsWith('recipe_')) return true
+  const name = (displayName ?? '').toLowerCase()
+  if (s.startsWith('recipe_') || s.includes('_recipe') || s.endsWith('_recipe')) return true
+  if (name.includes('recipe')) return true
   if (REMOVED_SHOP_SHORTNAMES.has(s)) return true
+  if (ROSHAN_DROP_SHORTNAMES.has(s)) return true
+  if (s.includes('aegis') || s.includes('roshan') || name.includes('aegis')) return true
+  if (name.includes('refresher shard') || name.includes("aghanim's blessing")) return true
   if (CYCLED_NEUTRAL_SHORTNAMES.has(s)) return true
   if (!displayName || !displayName.trim()) return true
   if (s.includes('river_painter') || s.includes('winter_2022') || s.includes('fall_2021')) return true
@@ -286,6 +310,8 @@ export function isShopExcluded(shortName: string, isNeutralFlag: boolean): boole
   if (isCurrentNeutral(s)) return true
   if (CYCLED_NEUTRAL_SHORTNAMES.has(s)) return true
   if (REMOVED_SHOP_SHORTNAMES.has(s)) return true
-  if (s.startsWith('recipe_')) return true
+  if (ROSHAN_DROP_SHORTNAMES.has(s)) return true
+  if (s.includes('aegis') || s.includes('roshan')) return true
+  if (s.startsWith('recipe_') || s.includes('_recipe') || s.endsWith('_recipe')) return true
   return false
 }

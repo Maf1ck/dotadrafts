@@ -56,6 +56,14 @@ export const HERO_PRIMARY_POSITIONS: Record<string, HeroPosition[]> = {
   brewmaster: [3],
   beastmaster: [3],
   dawnbreaker: [3, 4],
+  legion_commander: [3],
+  slardar: [3],
+  bristleback: [3, 1],
+  sand_king: [3],
+  broodmother: [3, 2],
+  lycan: [3, 1],
+  necrolyte: [3, 2],
+  abyssal_underlord: [3],
   // Typical mids
   invoker: [2],
   storm_spirit: [2],
@@ -64,6 +72,12 @@ export const HERO_PRIMARY_POSITIONS: Record<string, HeroPosition[]> = {
   death_prophet: [2, 3],
   leshrac: [2, 3],
   zuus: [2],
+  huskar: [2],
+  meepo: [2, 1],
+  dragon_knight: [2, 3],
+  primal_beast: [3, 2],
+  magnataur: [3, 2],
+  tiny: [2, 4],
   // Typical carries
   antimage: [1],
   spectre: [1],
@@ -74,11 +88,20 @@ export const HERO_PRIMARY_POSITIONS: Record<string, HeroPosition[]> = {
   juggernaut: [1],
   luna: [1],
   morphling: [1, 2],
+  sven: [1],
+  slark: [1],
+  ursa: [1],
+  troll_warlord: [1],
+  chaos_knight: [1, 3],
+  life_stealer: [1],
+  monkey_king: [1, 2, 4],
   // Flex cores that are NOT mid first
   spirit_breaker: [4, 3],
   mirana: [4, 2, 1],
   windrunner: [2, 4, 1],
   nature_prophet: [4, 3, 2],
+  earthshaker: [4, 3],
+  pudge: [4, 3],
 }
 
 export function shortHeroName(name: string): string {

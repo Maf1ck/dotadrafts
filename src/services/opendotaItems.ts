@@ -294,3 +294,61 @@ export function listNeutralItems(constants: Record<number, ItemInfo>): ItemInfo[
         (a.tier ?? 99) - (b.tier ?? 99) || a.displayName.localeCompare(b.displayName),
     )
 }
+
+export interface HeroBenchmarks {
+  gpm: number
+  xpm: number
+  kda: number
+  lastHits: number
+  heroDamage: number
+}
+
+const benchCache = new Map<number, HeroBenchmarks>()
+const benchInflight = new Map<number, Promise<HeroBenchmarks>>()
+
+function percentile50(rows: { percentile: number; value: number }[] | undefined): number {
+  if (!rows?.length) return 0
+  const sorted = [...rows].sort((a, b) => a.percentile - b.percentile)
+  const hit = sorted.find((r) => r.percentile >= 0.5) ?? sorted[sorted.length - 1]
+  return hit?.value ?? 0
+}
+
+export async function fetchHeroBenchmarks(heroId: number): Promise<HeroBenchmarks> {
+  const cached = benchCache.get(heroId)
+  if (cached) return cached
+  const pending = benchInflight.get(heroId)
+  if (pending) return pending
+
+  const promise = (async (): Promise<HeroBenchmarks> => {
+    try {
+      const res = await fetch(`https://api.opendota.com/api/benchmarks?hero_id=${heroId}`)
+      if (!res.ok) throw new Error(`benchmarks ${res.status}`)
+      const data = await res.json()
+      const r = data.result ?? {}
+      const gpm = percentile50(r.gold_per_min)
+      const xpm = percentile50(r.xp_per_min)
+      const kills = percentile50(r.kills_per_min)
+      const deaths = percentile50(r.deaths_per_min) || 0.01
+      const assists = percentile50(r.assists_per_min)
+      const result: HeroBenchmarks = {
+        gpm: Math.round(gpm),
+        xpm: Math.round(xpm),
+        kda: Math.round(((kills + assists) / deaths) * 10) / 10,
+        lastHits: Math.round(percentile50(r.last_hits_per_min) * 40),
+        heroDamage: Math.round(percentile50(r.hero_damage_per_min)),
+      }
+      benchCache.set(heroId, result)
+      return result
+    } catch (e) {
+      console.warn(`[OpenDota] benchmarks failed for ${heroId}:`, e)
+      const empty = { gpm: 0, xpm: 0, kda: 0, lastHits: 0, heroDamage: 0 }
+      benchCache.set(heroId, empty)
+      return empty
+    } finally {
+      benchInflight.delete(heroId)
+    }
+  })()
+
+  benchInflight.set(heroId, promise)
+  return promise
+}

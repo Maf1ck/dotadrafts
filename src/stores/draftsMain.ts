@@ -29,8 +29,10 @@ import {
   fetchItemConstantsMap,
   clearItemConstantsCache,
   resolvePopularItems,
+  fetchHeroBenchmarks,
   type ItemInfo,
   type HeroItemPopularity,
+  type HeroBenchmarks,
 } from '../services/opendotaItems'
 import {
   CM_SEQUENCE,
@@ -113,8 +115,11 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
   >({})
   /** Whether Stratz data is loading for a given heroId */
   const heroDetailLoading = reactive<Record<number, boolean>>({})
-  /** Resolved item constants map: itemId → { displayName, shortName } */
-  const itemConstants = ref<Record<string, { displayName: string; shortName: string }>>({}) 
+  /** Resolves item constants map: itemId → { displayName, shortName } */
+  const itemConstants = ref<Record<string, { displayName: string; shortName: string }>>({})
+
+  /** OpenDota hero benchmarks (GPM/XPM/KDA) */
+  const heroBenchmarksCache = reactive<Record<number, HeroBenchmarks>>({})
 
   async function fetchMatchupsForHero(heroId: number) {
     if (matchupsCache[heroId]) return
@@ -161,6 +166,15 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     } finally {
       heroDetailLoading[heroId] = false
       void fetchHeroItemsData(heroId)
+    }
+  }
+
+  async function fetchHeroBenchmarksData(heroId: number) {
+    if (heroBenchmarksCache[heroId]) return
+    try {
+      heroBenchmarksCache[heroId] = await fetchHeroBenchmarks(heroId)
+    } catch (e) {
+      console.warn(`[Store] fetchHeroBenchmarksData failed for hero ${heroId}:`, e)
     }
   }
 
@@ -751,9 +765,11 @@ export const useDraftsMainStore = defineStore('draftsMain', () => {
     heroBuilds,
     radiantBuildScore,
     direBuildScore,
+    heroBenchmarksCache,
     fetchMatchupsForHero,
     fetchHeroDetailData,
     fetchHeroItemsData,
+    fetchHeroBenchmarksData,
     getResolvedItemsForHero,
     ensureItemConstants,
     ensureHeroBuild,

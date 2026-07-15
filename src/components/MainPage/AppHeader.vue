@@ -9,16 +9,16 @@ import { useRoute } from 'vue-router'
 const { t, locale } = useI18n()
 
 const store = useDraftsMainStore()
-const { activePatch, activeRank, isSteamConnected } = storeToRefs(store)
+const { activePatch, activeRank } = storeToRefs(store)
 
 const route = useRoute()
 
 const navItems = computed(() => [
-  { key: 'draft', label: t('nav.draft'), to: '/' },
+  { key: 'about', label: t('nav.about'), to: '/' },
+  { key: 'draft', label: t('nav.draft'), to: '/draft' },
   { key: 'sandbox', label: t('nav.sandbox'), to: '/sandbox' },
   { key: 'heroes', label: t('nav.heroes'), to: '/heroes' },
   { key: 'meta', label: t('nav.meta'), to: '/meta' },
-  { key: 'about', label: t('nav.about'), to: '/about' },
 ])
 
 function isActive(key: string) {
@@ -56,10 +56,6 @@ header.app-header
       .filters-row
         span.chip {{ activePatch.label }}
         span.chip {{ activeRank.label }}
-      button.steam-btn(v-if="!isSteamConnected" type="button" @click="store.connectSteam")
-        | {{ t('header.connectSteam') }}
-      .user-avatar(v-else)
-        span U
 </template>
 
 <style lang="scss" scoped>
@@ -192,38 +188,6 @@ header.app-header
   border-radius: var(--dd-radius-sm);
   font-size: 12px;
   color: var(--dd-text-muted);
-}
-
-.steam-btn {
-  display: inline-flex;
-  align-items: center;
-  padding: 8px 16px;
-  background: #e5b53b;
-  border: none;
-  border-radius: 8px;
-  font-family: 'Outfit', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  color: #080b10;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-
-  &:hover {
-    background: #f0c54a;
-    transform: translateY(-1px);
-  }
-}
-
-.user-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background: #1a2130;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: #9ca3af;
 }
 
 .lang-switcher {

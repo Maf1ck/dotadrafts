@@ -6,8 +6,17 @@ const router = createRouter({
   routes: [
     {
       path: '/',
+      name: 'about',
+      component: () => import('../pages/AboutPage.vue'),
+    },
+    {
+      path: '/draft',
       name: 'draft',
       component: () => import('../pages/MainPage.vue'),
+    },
+    {
+      path: '/about',
+      redirect: '/',
     },
     {
       path: '/heroes',
@@ -28,11 +37,6 @@ const router = createRouter({
       path: '/meta',
       name: 'meta',
       component: () => import('../pages/MetaPage.vue'),
-    },
-    {
-      path: '/about',
-      name: 'about',
-      component: () => import('../pages/AboutPage.vue'),
     },
   ],
 })

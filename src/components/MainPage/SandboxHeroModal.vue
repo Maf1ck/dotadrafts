@@ -227,7 +227,7 @@ Transition(name="sandbox-fade")
             )
               img(:src="s.item.imageUrl" :alt="s.item.displayName")
               span.name {{ s.item.displayName }}
-              span.reason {{ s.reason }}
+              span.reason {{ t(`tips.${s.reasonKey}`) }}
           .empty-hint(v-else) {{ t('sandbox.noSuggest') }}
 
           h3.sub-title {{ t('sandbox.popularBuild') }}

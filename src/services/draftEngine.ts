@@ -120,7 +120,54 @@ function inferPairSynergy(a: Hero, b: Hero): SynergyEntry | null {
   return null
 }
 
+// Trait-based countering — hero attributes that create natural counter relationships
+// High HP pool heroes (Durable/Str)
+const HIGH_HP_HEROES = new Set([
+  'centaur', 'dragon_knight', 'axe', 'slardar', 'tidehunter', 'pudge',
+  'bristleback', 'abyssal_underlord', 'spirit_breaker', 'omniknight',
+  'elder_titan', 'doom_bringer', 'tiny', 'kunkka', 'skeleton_king', 'abaddon'
+])
+// Illusion-based heroes
+const ILLUSION_HEROES = new Set([
+  'phantom_lancer', 'terrorblade', 'chaos_knight', 'naga_siren', 'spectre',
+  'meepo', 'lycan', 'broodmother'
+])
+// Strong healing / lifesteal
+const HEALING_HEROES = new Set([
+  'warlock', 'omniknight', 'dazzle', 'oracle', 'abaddon', 'undying', 'huskar',
+  'necrolyte', 'witch_doctor'
+])
+// Magic-heavy burst
+const MAGIC_BURST_HEROES = new Set([
+  'invoker', 'storm_spirit', 'leshrac', 'skywrath_mage', 'lion', 'viper', 'zuus',
+  'lina', 'pugna', 'tinker'
+])
+// Physical damage carries
+const PHYSICAL_CARRY_HEROES = new Set([
+  'phantom_assassin', 'juggernaut', 'ursa', 'troll_warlord', 'faceless_void',
+  'slark', 'antimage', 'sniper', 'drow_ranger'
+])
+
+const HERO_TRAIT_COUNTERS: { counters: string[]; countered: Set<string>; severity: 'low' | 'medium' | 'high'; description: string }[] = [
+  { counters: ['life_stealer', 'undying', 'necrolyte'], countered: HIGH_HP_HEROES, severity: 'high', description: 'Feast/Golem/Reaper shreds high HP' },
+  { counters: ['earthshaker', 'sven', 'axe', 'legion_commander'], countered: ILLUSION_HEROES, severity: 'high', description: 'Clears and punishes illusion clusters' },
+  { counters: ['ancient_apparition', 'doom_bringer', 'axe'], countered: HEALING_HEROES, severity: 'high', description: 'Prevents regeneration and ignores heals' },
+  { counters: ['antimage', 'huskar', 'pugna', 'rubick'], countered: MAGIC_BURST_HEROES, severity: 'high', description: 'Spell shields or magic absorption negates burst' },
+  { counters: ['razor', 'slardar', 'axe', 'brewmaster'], countered: PHYSICAL_CARRY_HEROES, severity: 'medium', description: 'Disarms, steals damage, or lowers armor' },
+]
+
 function inferCounterEntry(counter: Hero, victim: Hero): CounterEntry | null {
+  const cSn = shortName(counter)
+  const vSn = shortName(victim)
+
+  // Check trait-based counters
+  for (const trait of HERO_TRAIT_COUNTERS) {
+    if (trait.counters.includes(cSn) && trait.countered.has(vSn)) {
+      return { counter, victim, severity: trait.severity, description: trait.description }
+    }
+  }
+
+  // Role-based fallback
   for (const [cRole, vRole, severity, desc] of ROLE_COUNTERS) {
     if (
       counter.roles.includes(cRole as Hero['roles'][number]) &&
@@ -132,11 +179,15 @@ function inferCounterEntry(counter: Hero, victim: Hero): CounterEntry | null {
   return null
 }
 
-function getSynergyEntry(a: Hero, b: Hero): SynergyEntry | null {
+function shortName(hero: Hero): string {
+  return hero.name.replace(/^npc_dota_hero_/, '')
+}
+
+export function getSynergyEntry(a: Hero, b: Hero): SynergyEntry | null {
   return getCuratedSynergyEntry(a, b) ?? inferPairSynergy(a, b)
 }
 
-function getCounterEntry(heroA: Hero, heroB: Hero): CounterEntry | null {
+export function getCounterEntry(heroA: Hero, heroB: Hero): CounterEntry | null {
   const curated = getCuratedCounterEntry(heroA, heroB)
   if (curated) return curated
 
@@ -298,7 +349,8 @@ export function analyzeDraft(
     direCompBonus +
     direBuild * 1.35
 
-  if (radiantHeroes.length === 0 && direHeroes.length === 0) {
+  if (radiantHeroes.length === 0 || direHeroes.length === 0) {
+    // Incomplete draft — no real win% until both sides have at least one hero
     radiantScore = 50
     direScore = 50
   }
@@ -429,9 +481,6 @@ export function analyzeDraft(
   }
 }
 
-function shortName(hero: Hero): string {
-  return hero.name.replace(/^npc_dota_hero_/, '')
-}
 
 function roleFitScore(hero: Hero, position: number): number {
   const primary = getPrimaryPositions(hero.name)
@@ -540,7 +589,7 @@ export function scoreRecommendations(
   }
   synergyComponent = Math.min(38, Math.max(0, synergyComponent))
 
-  // 3. Matchup / Counter (Max 40 pts) — primary when enemies are known
+  // 3. Matchup / Counter (Max 55 pts) — primary when enemies are known
   let matchupComponent = 0
   for (const enemy of enemyHeroes) {
     let winRateAgainst = 50
@@ -564,32 +613,47 @@ export function scoreRecommendations(
       }
     }
 
+    let enemyScore = 0
+
     if (hasDynamic) {
       const diff = winRateAgainst - 50
-      matchupComponent += diff * 2.4
+      // Limit dynamic influence per enemy to +/- 15 to prevent absolute overrides
+      enemyScore += Math.min(15, Math.max(-15, diff * 1.5))
       if (diff >= 2.5) {
         tags.push({ label: `good vs ${enemy.localizedName}`, type: 'counter' })
       } else if (diff <= -2.5) {
         tags.push({ label: `weak vs ${enemy.localizedName}`, type: 'counter' })
       }
-    } else {
-      const entry = getCounterEntry(candidate, enemy)
-      if (entry && entry.counter.id === candidate.id) {
-        const bonus = entry.severity === 'high' ? 11 : entry.severity === 'medium' ? 7 : 3
-        matchupComponent += bonus
+    }
+
+    // ALWAYS check curated and trait-based counters.
+    // If the candidate is a strong mechanical counter, cancel out negative dynamic rates (e.g. Earthshaker vs PL).
+    const entry = getCounterEntry(candidate, enemy)
+    if (entry) {
+      if (entry.counter.id === candidate.id) {
+        // Candidate counters enemy
+        const bonus = entry.severity === 'high' ? 26 : entry.severity === 'medium' ? 16 : 8
+        enemyScore += bonus
+        if (enemyScore < bonus) {
+          enemyScore = bonus // Ignore negative dynamic rates for hard counters
+        }
         tags.push({ label: `counters ${enemy.localizedName}`, type: 'counter' })
-      } else if (entry && entry.victim.id === candidate.id) {
-        const penalty = entry.severity === 'high' ? 10 : entry.severity === 'medium' ? 6 : 3
-        matchupComponent -= penalty
+      } else if (entry.victim.id === candidate.id) {
+        // Enemy counters candidate
+        const penalty = entry.severity === 'high' ? 20 : entry.severity === 'medium' ? 12 : 5
+        enemyScore -= penalty
       }
     }
+
+    matchupComponent += enemyScore
   }
   if (!enemyHeroes.length) {
     matchupComponent = 5
   } else {
-    matchupComponent = matchupComponent / Math.max(1, Math.sqrt(enemyHeroes.length)) + 8
+    matchupComponent = matchupComponent / Math.max(1, Math.sqrt(enemyHeroes.length)) + 12
   }
-  matchupComponent = Math.min(40, Math.max(0, matchupComponent))
+  matchupComponent = Math.min(55, Math.max(0, matchupComponent))
+
 
   // 4. Role & Lane Fit (Max 18 pts)
   const roleFit = roleFitScore(candidate, position)

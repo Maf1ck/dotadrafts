@@ -15,7 +15,12 @@ const store = useDraftsMainStore()
 const radiantWidth = computed(() => `${props.prediction.radiantWinRate}%`)
 const direWidth = computed(() => `${props.prediction.direWinRate}%`)
 
+const incomplete = computed(
+  () => store.radiantHeroes.length === 0 || store.direHeroes.length === 0,
+)
+
 const deltaText = computed(() => {
+  if (incomplete.value) return t('sandbox.winIncomplete')
   if (!props.prediction.deltaHero) {
     return t('prob.selectHero')
   }
@@ -29,24 +34,24 @@ const deltaText = computed(() => {
 .probability-panel
   .panel-head
     span.panel-kicker {{ t('prob.winChance') }}
-    p.panel-desc {{ t('prob.updatesAfter') }}
+    p.panel-desc {{ incomplete ? t('sandbox.winIncomplete') : t('prob.updatesAfter') }}
 
   .win-numbers
     .win-side.radiant
       span.team-name Radiant
-      span.win-val {{ prediction.radiantWinRate.toFixed(1) }}%
+      span.win-val {{ incomplete ? '—' : prediction.radiantWinRate.toFixed(1) + '%' }}
     .win-divider
     .win-side.dire
       span.team-name Dire
-      span.win-val {{ prediction.direWinRate.toFixed(1) }}%
+      span.win-val {{ incomplete ? '—' : prediction.direWinRate.toFixed(1) + '%' }}
 
   .progress-bar
-    .bar-fill.radiant(:style="{ width: radiantWidth }")
-    .bar-fill.dire(:style="{ width: direWidth }")
+    .bar-fill.radiant(:style="{ width: incomplete ? '50%' : radiantWidth }")
+    .bar-fill.dire(:style="{ width: incomplete ? '50%' : direWidth }")
 
-  .delta-badge(:class="prediction.deltaHero ? prediction.deltaTeam : 'neutral'")
+  .delta-badge(:class="incomplete || !prediction.deltaHero ? 'neutral' : prediction.deltaTeam")
     span {{ deltaText }}
-  p.build-hint(v-if="store.radiantBuildScore + store.direBuildScore > 0.05")
+  p.build-hint(v-if="!incomplete && store.radiantBuildScore + store.direBuildScore > 0.05")
     | {{ t('prob.buildHint') }}
 </template>
 

@@ -26,6 +26,23 @@ const teamLabel = computed(() => (isForUs.value ? t('rec.forUs') : t('rec.forEne
 const isBanPhase = computed(() => props.actionType === 'ban')
 const enemySide = computed<TeamSide>(() => (store.myTeam === 'radiant' ? 'dire' : 'radiant'))
 
+const isSimulator = computed(() => store.draftMode === 'simulator')
+const simulatorTeamLabel = computed(() => props.forTeam === 'radiant' ? 'Radiant' : 'Dire')
+
+const panelTitle = computed(() => {
+  if (isSimulator.value) {
+    return isBanPhase.value ? `${simulatorTeamLabel.value} is Banning` : `${simulatorTeamLabel.value} is Picking`
+  }
+  return isBanPhase.value ? t('rec.titleBan') : t('rec.title')
+})
+
+const panelDesc = computed(() => {
+  if (isSimulator.value) {
+    return isBanPhase.value ? `Suggested bans for ${simulatorTeamLabel.value}` : `Suggested picks for ${simulatorTeamLabel.value}`
+  }
+  return isBanPhase.value ? t('rec.bestBan', { team: teamLabel.value }) : t('rec.bestFor', { team: teamLabel.value })
+})
+
 const poolBtnText = computed(() => {
   if (store.heroPoolFilter.size === 0) return t('rec.poolAllMine')
   return t('rec.poolCountMine', { count: store.heroPoolFilter.size })
@@ -36,8 +53,8 @@ const poolBtnText = computed(() => {
 .recommendation-panel
   .rec-header
     .rec-heading
-      h2.rec-title {{ isBanPhase ? t('rec.titleBan') : t('rec.title') }}
-      p.rec-desc {{ isBanPhase ? t('rec.bestBan', { team: teamLabel }) : t('rec.bestFor', { team: teamLabel }) }}
+      h2.rec-title( :class="{ 'is-radiant': isSimulator && forTeam === 'radiant', 'is-dire': isSimulator && forTeam === 'dire' }" ) {{ panelTitle }}
+      p.rec-desc {{ panelDesc }}
     .header-controls
       button.pool-filter-btn(
         type="button"
@@ -109,6 +126,14 @@ const poolBtnText = computed(() => {
   font-size: 15px;
   font-weight: 700;
   color: var(--dd-text);
+
+  &.is-radiant {
+    color: var(--dd-radiant);
+  }
+
+  &.is-dire {
+    color: var(--dd-dire);
+  }
 }
 
 .rec-desc {
